@@ -565,31 +565,38 @@ with input_col2:
 
 video_a = None
 video_b = None
+video_data_a = None
+video_data_b = None
+debug_a = None
+debug_b = None
 
 if youtube_link_a:
     video_id_a = extract_video_id(youtube_link_a)
     if video_id_a:
         video_data_a, debug_a = fetch_video_data(video_id_a)
-if video_data_a:
-    video_a = prepare_video_metrics(video_data_a)
-else:
-    st.error("Could not fetch details for Video A.")
 
-    with st.expander("Debug details for Video A"):
-        st.json(debug_a)
+        if video_data_a:
+            video_a = prepare_video_metrics(video_data_a)
+        else:
+            st.error("Could not fetch details for Video A.")
+            with st.expander("Debug details for Video A"):
+                st.json(debug_a)
+    else:
+        st.error("Invalid YouTube URL for Video A.")
 
 if youtube_link_b:
     video_id_b = extract_video_id(youtube_link_b)
     if video_id_b:
         video_data_b, debug_b = fetch_video_data(video_id_b)
-if video_data_b:
-    video_b = prepare_video_metrics(video_data_b)
-else:
-    st.error("Could not fetch details for Video B.")
 
-    with st.expander("Debug details for Video B"):
-        st.json(debug_b)
-
+        if video_data_b:
+            video_b = prepare_video_metrics(video_data_b)
+        else:
+            st.error("Could not fetch details for Video B.")
+            with st.expander("Debug details for Video B"):
+                st.json(debug_b)
+    else:
+        st.error("Invalid YouTube URL for Video B.")
 if video_a and not video_b:
     st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -665,6 +672,7 @@ if video_a and not video_b:
                 min-height: 360px;
             ">
                 <div style="font-size: 1.15rem; font-weight: 700; color: white; margin-bottom: 20px;">
+            """
                     Engagement Diagnostics
                 </div>
                 <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
