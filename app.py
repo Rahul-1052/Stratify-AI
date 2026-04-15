@@ -94,10 +94,9 @@ def benchmark_decision(score, engagement_rate):
     return "No — weak benchmark candidate."
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600)
 def fetch_video_data(video_id):
     return get_video_details(video_id)
-
 
 def prepare_video_metrics(video_data):
     views = int(video_data.get("views", 0))
@@ -570,24 +569,26 @@ video_b = None
 if youtube_link_a:
     video_id_a = extract_video_id(youtube_link_a)
     if video_id_a:
-        video_data_a = fetch_video_data(video_id_a)
-        if video_data_a:
-            video_a = prepare_video_metrics(video_data_a)
-        else:
-            st.error("Could not fetch details for Video A.")
-    else:
-        st.error("Invalid Video A link.")
+        video_data_a, debug_a = fetch_video_data(video_id_a)
+if video_data_a:
+    video_a = prepare_video_metrics(video_data_a)
+else:
+    st.error("Could not fetch details for Video A.")
+
+    with st.expander("Debug details for Video A"):
+        st.json(debug_a)
 
 if youtube_link_b:
     video_id_b = extract_video_id(youtube_link_b)
     if video_id_b:
-        video_data_b = fetch_video_data(video_id_b)
-        if video_data_b:
-            video_b = prepare_video_metrics(video_data_b)
-        else:
-            st.error("Could not fetch details for Video B.")
-    else:
-        st.error("Invalid Video B link.")
+        video_data_b, debug_b = fetch_video_data(video_id_b)
+if video_data_b:
+    video_b = prepare_video_metrics(video_data_b)
+else:
+    st.error("Could not fetch details for Video B.")
+
+    with st.expander("Debug details for Video B"):
+        st.json(debug_b)
 
 if video_a and not video_b:
     st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
