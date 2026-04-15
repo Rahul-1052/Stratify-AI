@@ -96,7 +96,31 @@ def benchmark_decision(score, engagement_rate):
 
 @st.cache_data(show_spinner=False, ttl=600)
 def fetch_video_data(video_id):
-    return get_video_details(video_id)
+    """
+    Supports both:
+    1. get_video_details(video_id) -> dict | None
+    2. get_video_details(video_id) -> (dict | None, debug_dict)
+    """
+    result = get_video_details(video_id)
+
+    if isinstance(result, tuple) and len(result) == 2:
+        return result
+
+    if result is None:
+        return None, {
+            "ok": False,
+            "stage": "fetch_failed",
+            "video_id": video_id,
+            "message": "YouTube API returned no data.",
+        }
+
+    return result, {
+        "ok": True,
+        "stage": "success",
+        "video_id": video_id,
+        "message": "Video fetched successfully.",
+    }
+
 
 def prepare_video_metrics(video_data):
     views = int(video_data.get("views", 0))
@@ -533,13 +557,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Tagline
 st.markdown("Decode what drives video performance — using data + AI.")
-
-# Premium sub-caption
 st.caption("AI-powered content intelligence for performance-driven decisions")
-
-# Bullet points
 st.caption(
     "• Decode engagement patterns  \n"
     "• Understand audience psychology  \n"
@@ -597,6 +616,7 @@ if youtube_link_b:
                 st.json(debug_b)
     else:
         st.error("Invalid YouTube URL for Video B.")
+
 if video_a and not video_b:
     st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -672,7 +692,6 @@ if video_a and not video_b:
                 min-height: 360px;
             ">
                 <div style="font-size: 1.15rem; font-weight: 700; color: white; margin-bottom: 20px;">
-            """
                     Engagement Diagnostics
                 </div>
                 <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
