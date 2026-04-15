@@ -557,6 +557,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.caption("© 2026 Rahul Karaka · Stratify AI · All Rights Reserved")
+
 st.markdown("Decode what drives video performance — using data + AI.")
 st.caption("AI-powered content intelligence for performance-driven decisions")
 st.caption(
