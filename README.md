@@ -6,11 +6,11 @@ AI-powered YouTube content intelligence platform for analyzing video performance
 
 ## 🚀 Features
 
-- 📊 Extracts real-time YouTube video metrics
-- 📈 Calculates engagement & performance scores
-- 🧠 AI-powered insights (content style, audience, psychology)
+- Extracts real-time YouTube video metrics
+- Calculates engagement & performance scores
+- AI-powered insights (content style, audience, psychology)
 - ⚔️ Compare two videos side-by-side
-- 🎯 Decision intelligence for benchmarking content
+- Decision intelligence for benchmarking content
 
 ---
 
@@ -27,7 +27,7 @@ AI-powered YouTube content intelligence platform for analyzing video performance
 
 ## 🔗 Live Demo
 
-👉 [Open App](https://stratify-ai-qzjf3qnbf3pfjh3sgcdaxa.streamlit.app/)
+[Open App](https://stratify-ai-qzjf3qnbf3pfjh3sgcdaxa.streamlit.app)
 
 ---
 
@@ -35,18 +35,20 @@ AI-powered YouTube content intelligence platform for analyzing video performance
 
 Stratify AI helps creators, marketers, and analysts:
 
-- Identify high-performing content patterns  
-- Understand audience engagement behavior  
-- Make data-driven content decisions  
+- Identify high-performing content patterns
+- Understand audience engagement behavior
+- Make data-driven content decisions
 
 ---
 
 ## 📸 Preview
 
-![App Preview](<img width="2546" height="1298" alt="image" src="https://github.com/user-attachments/assets/32b308a7-37be-4035-8b8b-25fd4bbde188" />
-<img width="2553" height="1302" alt="Screenshot 2026-04-15 190059" src="https://github.com/user-attachments/assets/ac55ed02-3d29-4136-a083-96eb3bb00f5e" />
+![App Preview](<img width="2543" height="1298" alt="image" src="https://github.com/user-attachments/assets/75d7239f-887c-430d-8541-ce4d62a25314" />
+<img width="2557" height="1297" alt="image" src="https://github.com/user-attachments/assets/225379e9-b049-485d-9e72-93f781b120e4" />
+<img width="2547" height="1295" alt="image" src="https://github.com/user-attachments/assets/e1f9e559-fa37-4a0e-ab79-040f95272767" />
 
 
+)
 
 ---
 
