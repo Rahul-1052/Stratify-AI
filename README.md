@@ -44,7 +44,8 @@ Stratify AI helps creators, marketers, and analysts:
 ## 📸 Preview
 
 ![App Preview](<img width="2546" height="1298" alt="image" src="https://github.com/user-attachments/assets/32b308a7-37be-4035-8b8b-25fd4bbde188" />
-.png)
+<img width="2553" height="1302" alt="Screenshot 2026-04-15 190059" src="https://github.com/user-attachments/assets/ac55ed02-3d29-4136-a083-96eb3bb00f5e" />
+
 
 
 ---
