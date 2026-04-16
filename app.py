@@ -121,15 +121,13 @@ def get_ai_analysis(video_data):
         if not isinstance(analysis, dict):
             return fallback_ai_insight(video_data)
 
-        cleaned = {
+        return {
             "content_style": analysis.get("content_style") or "High-intensity cinematic storytelling with strong emotional hooks.",
             "target_audience": analysis.get("target_audience") or "Action movie enthusiasts and cinematic content viewers.",
             "engagement_reason": analysis.get("engagement_reason") or "The video captures attention early but lacks sustained interaction triggers.",
             "improvement_suggestion": analysis.get("improvement_suggestion") or "Introduce a stronger hook within the first 5 seconds and add clear call-to-action elements to boost engagement.",
             "psychological_triggers": analysis.get("psychological_triggers") or "Curiosity, tension buildup, and character-driven emotional engagement.",
         }
-        return cleaned
-
     except Exception:
         return fallback_ai_insight(video_data)
 
@@ -512,6 +510,123 @@ def render_ai_analysis_tabs(video_data, analysis):
             )
 
 
+def render_single_video_view(video_data, label, button_key_suffix):
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+    left, right = st.columns([2.2, 1])
+
+    with left:
+        render_video_summary_card(video_data, label)
+
+    with right:
+        render_score_card(video_data)
+
+    render_key_takeaway(video_data)
+
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #1e3a8a, #7c3aed);
+            padding: 20px;
+            border-radius: 16px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 10px;
+            margin-bottom: 14px;
+        ">
+        🔥 Key Insight: This video shows <b>{safe(video_data['performance_signal'])}</b> and currently rates as
+        <b>{safe(video_data['score_headline'])}</b>.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    render_video_metrics(video_data)
+
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+
+    st.success(f"Decision Intelligence: {video_data['decision']}")
+
+    with st.expander("View thumbnail"):
+        if video_data.get("thumbnail"):
+            st.image(video_data["thumbnail"], width=260)
+
+    if st.button("🚀 Run AI Analysis", key=f"analyze_video_{button_key_suffix}_btn"):
+        with st.spinner("Analyzing video..."):
+            analysis = get_ai_analysis(video_data)
+
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        render_ai_analysis_tabs(video_data, analysis)
+
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+    st.subheader("📉 Visual Intelligence")
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.plotly_chart(
+            create_metric_bar_chart(video_data["views"], video_data["likes"], video_data["comments"]),
+            use_container_width=True,
+            key=f"single_metric_bar_chart_{button_key_suffix}",
+        )
+
+    with chart_col2:
+        st.plotly_chart(
+            create_score_gauge(video_data["final_score"]),
+            use_container_width=True,
+            key=f"single_score_gauge_{button_key_suffix}",
+        )
+
+    chart_col3, chart_col4 = st.columns(2)
+
+    with chart_col3:
+        st.plotly_chart(
+            create_engagement_chart(
+                video_data["like_rate"],
+                video_data["comment_rate"],
+                video_data["engagement_rate"],
+            ),
+            use_container_width=True,
+            key=f"single_engagement_chart_{button_key_suffix}",
+        )
+
+    with chart_col4:
+        st.markdown(
+            f"""
+            <div style="
+                background: linear-gradient(135deg, #111827, #1f2937);
+                padding: 24px;
+                border-radius: 20px;
+                border: 1px solid rgba(255,255,255,0.08);
+                box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+                min-height: 360px;
+            ">
+                <div style="font-size: 1.15rem; font-weight: 700; color: white; margin-bottom: 20px;">
+                    Engagement Diagnostics
+                </div>
+                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
+                    👍 <b>Likes per 1K views:</b> {video_data['likes_per_1k']:.2f}
+                </div>
+                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
+                    💬 <b>Comments per 1K views:</b> {video_data['comments_per_1k']:.2f}
+                </div>
+                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
+                    📈 <b>Engagement quality:</b> {safe(video_data['score_headline'])}
+                </div>
+                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
+                    🔥 <b>Viral score:</b> {video_data['viral_score']:.2f}
+                </div>
+                <div style="color: #93c5fd; font-size: 1rem; line-height: 1.7; margin-top: 24px;">
+                    This panel helps interpret whether the video is only getting reach,
+                    or also converting attention into meaningful audience response.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 st.markdown(
     """
     <style>
@@ -667,120 +782,10 @@ if youtube_link_b:
         st.error("Invalid YouTube URL for Video B.")
 
 if video_a and not video_b:
-    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+    render_single_video_view(video_a, "Video Intelligence", "a")
 
-    left, right = st.columns([2.2, 1])
-
-    with left:
-        render_video_summary_card(video_a, "Video Intelligence")
-
-    with right:
-        render_score_card(video_a)
-
-    render_key_takeaway(video_a)
-
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #1e3a8a, #7c3aed);
-            padding: 20px;
-            border-radius: 16px;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-top: 10px;
-            margin-bottom: 14px;
-        ">
-        🔥 Key Insight: This video shows <b>{safe(video_a['performance_signal'])}</b> and currently rates as
-        <b>{safe(video_a['score_headline'])}</b>.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    render_video_metrics(video_a)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-
-    st.success(f"Decision Intelligence: {video_a['decision']}")
-
-    with st.expander("View thumbnail"):
-        if video_a.get("thumbnail"):
-            st.image(video_a["thumbnail"], width=260)
-
-    if st.button("🚀 Run AI Analysis", key="analyze_video_a_btn"):
-        with st.spinner("Analyzing video..."):
-            analysis = get_ai_analysis(video_a)
-
-        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        render_ai_analysis_tabs(video_a, analysis)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-    st.subheader("📉 Visual Intelligence")
-
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        st.plotly_chart(
-            create_metric_bar_chart(video_a["views"], video_a["likes"], video_a["comments"]),
-            use_container_width=True,
-            key="single_metric_bar_chart",
-        )
-
-    with chart_col2:
-        st.plotly_chart(
-            create_score_gauge(video_a["final_score"]),
-            use_container_width=True,
-            key="single_score_gauge",
-        )
-
-    chart_col3, chart_col4 = st.columns(2)
-
-    with chart_col3:
-        st.plotly_chart(
-            create_engagement_chart(
-                video_a["like_rate"],
-                video_a["comment_rate"],
-                video_a["engagement_rate"],
-            ),
-            use_container_width=True,
-            key="single_engagement_chart",
-        )
-
-    with chart_col4:
-        st.markdown(
-            f"""
-            <div style="
-                background: linear-gradient(135deg, #111827, #1f2937);
-                padding: 24px;
-                border-radius: 20px;
-                border: 1px solid rgba(255,255,255,0.08);
-                box-shadow: 0 10px 28px rgba(0,0,0,0.18);
-                min-height: 360px;
-            ">
-                <div style="font-size: 1.15rem; font-weight: 700; color: white; margin-bottom: 20px;">
-                    Engagement Diagnostics
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    👍 <b>Likes per 1K views:</b> {video_a['likes_per_1k']:.2f}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    💬 <b>Comments per 1K views:</b> {video_a['comments_per_1k']:.2f}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    📈 <b>Engagement quality:</b> {safe(video_a['score_headline'])}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    🔥 <b>Viral score:</b> {video_a['viral_score']:.2f}
-                </div>
-                <div style="color: #93c5fd; font-size: 1rem; line-height: 1.7; margin-top: 24px;">
-                    This panel helps interpret whether the video is only getting reach,
-                    or also converting attention into meaningful audience response.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+elif video_b and not video_a:
+    render_single_video_view(video_b, "Video Intelligence", "b")
 
 elif video_a and video_b:
     st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
