@@ -1,966 +1,484 @@
-import html
-from datetime import datetime
-from urllib.parse import parse_qs, urlparse
-
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
+import google.generativeai as genai
+import re
+import requests
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import (
+    TranscriptsDisabled,
+    NoTranscriptFound,
+    VideoUnavailable,
+)
 
-from utils.ai_utils import analyze_video, compare_videos
-from utils.youtube_utils import get_video_details
+# =========================
+# PAGE CONFIG
+# =========================
+st.set_page_config(page_title="Stratify AI", layout="wide")
+st.title("Stratify AI")
+st.caption("AI-powered YouTube content intelligence")
 
+# =========================
+# API KEYS
+# =========================
+youtube_api_key = ""
+gemini_api_key = ""
 
-st.set_page_config(page_title="Stratify AI", page_icon="📈", layout="wide")
+try:
+    youtube_api_key = st.secrets["YOUTUBE_API_KEY"]
+except Exception:
+    youtube_api_key = ""
 
+try:
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    gemini_api_key = ""
 
-def safe(value):
-    if value is None:
-        return ""
-    return html.escape(str(value))
+if not youtube_api_key:
+    st.warning("Missing YOUTUBE_API_KEY in secrets.toml")
 
+if not gemini_api_key:
+    st.warning("Missing GEMINI_API_KEY in secrets.toml")
 
-def extract_video_id(youtube_url: str):
+model = None
+if gemini_api_key:
     try:
-        parsed_url = urlparse(youtube_url.strip())
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash-001")
+    except Exception as e:
+        st.error(f"Gemini setup failed: {str(e)}")
 
-        if parsed_url.hostname in ["www.youtube.com", "youtube.com", "m.youtube.com"]:
-            query_params = parse_qs(parsed_url.query)
-            return query_params.get("v", [None])[0]
-
-        if parsed_url.hostname == "youtu.be":
-            return parsed_url.path.lstrip("/")
-
+# =========================
+# HELPERS
+# =========================
+def extract_video_id(url: str):
+    if not url:
         return None
-    except Exception:
-        return None
+
+    patterns = [
+        r"(?:v=|\/videos\/|embed\/|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})"
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url.strip()):
+        return url.strip()
+
+    return None
 
 
-def format_publish_date(date_str: str) -> str:
+def safe_int(value, default=0):
     try:
-        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
-        return dt.strftime("%b %d, %Y")
+        return int(value)
     except Exception:
-        return date_str
+        return default
 
 
-def score_metric(value, low, medium, high):
-    if value >= high:
-        return 100
-    elif value >= medium:
-        return 75
-    elif value >= low:
-        return 50
-    elif value > 0:
-        return 25
-    return 0
+def calculate_engagement(video):
+    views = video.get("views", 0)
+    likes = video.get("likes", 0)
+    comments = video.get("comments", 0)
 
+    if views <= 0:
+        return {
+            "engagement_rate": 0.0,
+            "like_rate": 0.0,
+            "comment_rate": 0.0,
+        }
 
-def get_score_label(score):
-    if score >= 80:
-        return "Excellent"
-    elif score >= 65:
-        return "Strong"
-    elif score >= 45:
-        return "Average"
-    return "Needs Improvement"
-
-
-def get_score_color(score):
-    if score >= 80:
-        return "#22c55e"
-    elif score >= 65:
-        return "#3b82f6"
-    elif score >= 45:
-        return "#f59e0b"
-    return "#ef4444"
-
-
-def get_score_headline(score_label):
-    score_text = {
-        "Excellent": "🚀 Viral Potential",
-        "Strong": "🔥 High Performing",
-        "Average": "⚖️ Moderate Impact",
-        "Needs Improvement": "⚠️ Needs Optimization",
-    }
-    return score_text.get(score_label, score_label)
-
-
-def get_performance_signal(views, engagement_rate):
-    if views >= 100000 and engagement_rate < 1.5:
-        return "High reach, weak engagement"
-    elif views < 20000 and engagement_rate >= 3:
-        return "Low reach, strong engagement"
-    elif views >= 100000 and engagement_rate >= 3:
-        return "High reach, strong engagement"
-    return "Moderate performance"
-
-
-def benchmark_decision(score, engagement_rate):
-    if score >= 70 and engagement_rate >= 2.5:
-        return "Yes — strong benchmark candidate."
-    elif score >= 50:
-        return "Possibly — selective insights."
-    return "No — weak benchmark candidate."
-
-
-def fallback_ai_insight(video_data):
     return {
-        "content_style": "High-intensity cinematic storytelling with strong emotional hooks.",
-        "target_audience": "Action movie enthusiasts and cinematic content viewers.",
-        "engagement_reason": "The video captures attention early but lacks sustained interaction triggers.",
-        "improvement_suggestion": "Introduce a stronger hook within the first 5 seconds and add clear call-to-action elements to boost engagement.",
-        "psychological_triggers": "Curiosity, tension buildup, and character-driven emotional engagement.",
+        "engagement_rate": round(((likes + comments) / views) * 100, 2),
+        "like_rate": round((likes / views) * 100, 2),
+        "comment_rate": round((comments / views) * 100, 2),
     }
 
 
-def get_ai_analysis(video_data):
-    try:
-        analysis = analyze_video(video_data)
+# =========================
+# YOUTUBE DATA
+# =========================
+def get_video_data(video_url: str):
+    video_id = extract_video_id(video_url)
+    if not video_id:
+        return {
+            "ok": False,
+            "message": "Invalid YouTube URL or video ID."
+        }
 
-        if not isinstance(analysis, dict):
-            return fallback_ai_insight(video_data)
+    url = (
+        "https://www.googleapis.com/youtube/v3/videos"
+        f"?part=snippet,statistics&id={video_id}&key={youtube_api_key}"
+    )
+
+    try:
+        res = requests.get(url, timeout=20)
+    except Exception as e:
+        return {
+            "ok": False,
+            "message": f"Request failed: {str(e)}"
+        }
+
+    if res.status_code != 200:
+        try:
+            error_json = res.json()
+        except Exception:
+            error_json = {"raw_text": res.text}
 
         return {
-            "content_style": analysis.get("content_style") or "High-intensity cinematic storytelling with strong emotional hooks.",
-            "target_audience": analysis.get("target_audience") or "Action movie enthusiasts and cinematic content viewers.",
-            "engagement_reason": analysis.get("engagement_reason") or "The video captures attention early but lacks sustained interaction triggers.",
-            "improvement_suggestion": analysis.get("improvement_suggestion") or "Introduce a stronger hook within the first 5 seconds and add clear call-to-action elements to boost engagement.",
-            "psychological_triggers": analysis.get("psychological_triggers") or "Curiosity, tension buildup, and character-driven emotional engagement.",
+            "ok": False,
+            "message": "YouTube API request failed.",
+            "status_code": res.status_code,
+            "error": error_json,
+        }
+
+    try:
+        data = res.json()
+    except Exception as e:
+        return {
+            "ok": False,
+            "message": f"Could not parse YouTube response: {str(e)}"
+        }
+
+    items = data.get("items", [])
+    if not items:
+        return {
+            "ok": False,
+            "message": "No video found for this URL."
+        }
+
+    item = items[0]
+    snippet = item.get("snippet", {})
+    statistics = item.get("statistics", {})
+
+    video = {
+        "ok": True,
+        "video_id": video_id,
+        "title": snippet.get("title", ""),
+        "description": snippet.get("description", ""),
+        "channel": snippet.get("channelTitle", ""),
+        "published_at": snippet.get("publishedAt", ""),
+        "views": safe_int(statistics.get("viewCount")),
+        "likes": safe_int(statistics.get("likeCount")),
+        "comments": safe_int(statistics.get("commentCount")),
+        "url": video_url,
+    }
+
+    video.update(calculate_engagement(video))
+    return video
+
+
+# =========================
+# TRANSCRIPT
+# =========================
+def clean_text(text: str):
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def get_transcript(video_id: str):
+    try:
+        api = YouTubeTranscriptApi()
+        data = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
+        text = " ".join([seg.text for seg in data if getattr(seg, "text", "")])
+        text = clean_text(text)
+
+        return {
+            "ok": True,
+            "text": text[:5000],
+            "word_count": len(text.split()),
+        }
+
+    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable):
+        return {
+            "ok": False,
+            "text": "",
+            "word_count": 0,
         }
     except Exception:
-        return fallback_ai_insight(video_data)
-
-
-@st.cache_data(show_spinner=False, ttl=600)
-def fetch_video_data(video_id):
-    result = get_video_details(video_id)
-
-    if isinstance(result, tuple) and len(result) == 2:
-        return result
-
-    if result is None:
-        return None, {
+        return {
             "ok": False,
-            "stage": "fetch_failed",
-            "video_id": video_id,
-            "message": "YouTube API returned no data.",
+            "text": "",
+            "word_count": 0,
         }
 
-    return result, {
-        "ok": True,
-        "stage": "success",
-        "video_id": video_id,
-        "message": "Video fetched successfully.",
-    }
+
+# =========================
+# PROMPTS
+# =========================
+def build_prompt(video, transcript):
+    return f"""
+You are a senior YouTube content strategist.
+
+Analyze this YouTube video using:
+- title
+- description
+- transcript
+- performance signals
+
+Be specific and practical.
+Do not be generic.
+
+Return in exactly this format:
+
+Content Style:
+<2-3 sentences>
+
+Target Audience:
+<2-3 sentences>
+
+Psychology:
+<2-3 sentences>
+
+Why It Performs:
+<2-3 sentences>
+
+Improvements:
+- <point 1>
+- <point 2>
+- <point 3>
+
+TITLE:
+{video['title']}
+
+DESCRIPTION:
+{video['description'][:1500]}
+
+TRANSCRIPT:
+{transcript[:5000]}
+
+METRICS:
+Views: {video['views']}
+Likes: {video['likes']}
+Comments: {video['comments']}
+Like Rate: {video['like_rate']}%
+Comment Rate: {video['comment_rate']}%
+Engagement Rate: {video['engagement_rate']}%
+""".strip()
 
 
-def prepare_video_metrics(video_data):
-    views = int(video_data.get("views", 0))
-    likes = int(video_data.get("likes", 0))
-    comments = int(video_data.get("comments", 0))
+def build_comparison_prompt(video_a, transcript_a, ai_a, video_b, transcript_b, ai_b):
+    return f"""
+You are a senior YouTube content strategist.
 
-    like_rate = (likes / views) * 100 if views > 0 else 0
-    comment_rate = (comments / views) * 100 if views > 0 else 0
-    engagement_rate = ((likes + comments) / views) * 100 if views > 0 else 0
+Compare these two videos using:
+- title
+- description
+- transcript
+- performance metrics
+- prior analysis
 
-    likes_per_1k = (likes / views) * 1000 if views > 0 else 0
-    comments_per_1k = (comments / views) * 1000 if views > 0 else 0
-    viral_score = (engagement_rate * 0.6 + like_rate * 0.4) if views > 0 else 0
+Return in exactly this format:
 
-    views_score = score_metric(views, 10000, 50000, 200000)
-    like_rate_score = score_metric(like_rate, 0.5, 1.5, 3.0)
-    comment_rate_score = score_metric(comment_rate, 0.05, 0.15, 0.4)
-    engagement_score = score_metric(engagement_rate, 1.0, 2.5, 5.0)
+Which Video Has Stronger Content Strategy:
+<short paragraph>
 
-    final_score = round(
-        (views_score * 0.20)
-        + (like_rate_score * 0.30)
-        + (comment_rate_score * 0.20)
-        + (engagement_score * 0.30),
-        1,
-    )
+Video A Strengths:
+<short paragraph>
 
-    score_label = get_score_label(final_score)
-    score_color = get_score_color(final_score)
-    score_headline = get_score_headline(score_label)
-    performance_signal = get_performance_signal(views, engagement_rate)
-    decision = benchmark_decision(final_score, engagement_rate)
-    confidence = "High" if views >= 100000 else "Medium" if views >= 20000 else "Low"
+Video B Strengths:
+<short paragraph>
 
-    return {
-        **video_data,
-        "views": views,
-        "likes": likes,
-        "comments": comments,
-        "like_rate": round(like_rate, 2),
-        "comment_rate": round(comment_rate, 2),
-        "engagement_rate": round(engagement_rate, 2),
-        "likes_per_1k": round(likes_per_1k, 2),
-        "comments_per_1k": round(comments_per_1k, 2),
-        "viral_score": round(viral_score, 2),
-        "final_score": final_score,
-        "score_label": score_label,
-        "score_color": score_color,
-        "score_headline": score_headline,
-        "performance_signal": performance_signal,
-        "decision": decision,
-        "confidence": confidence,
-    }
+Audience Difference:
+<short paragraph>
 
+Hook / Psychology Difference:
+<short paragraph>
 
-def metric_card(title, value):
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #111827, #1f2937);
-            padding: 16px;
-            border-radius: 18px;
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-            min-height: 100px;
-        ">
-            <div style="font-size: 0.9rem; color: #9ca3af; margin-bottom: 8px;">{safe(title)}</div>
-            <div style="font-size: 1.6rem; font-weight: 700; color: white;">{safe(value)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+Winner:
+<short paragraph>
+
+VIDEO A
+Title: {video_a['title']}
+Description: {video_a['description'][:1000]}
+Transcript: {transcript_a[:2500]}
+Views: {video_a['views']}
+Likes: {video_a['likes']}
+Comments: {video_a['comments']}
+Engagement Rate: {video_a['engagement_rate']}%
+Analysis:
+{ai_a[:2000]}
+
+VIDEO B
+Title: {video_b['title']}
+Description: {video_b['description'][:1000]}
+Transcript: {transcript_b[:2500]}
+Views: {video_b['views']}
+Likes: {video_b['likes']}
+Comments: {video_b['comments']}
+Engagement Rate: {video_b['engagement_rate']}%
+Analysis:
+{ai_b[:2000]}
+""".strip()
 
 
-def insight_card(title, body, accent="#93c5fd", min_height=180):
-    st.markdown(
-        f"""
-        <div style="
-            background: #111827;
-            padding: 20px;
-            border-radius: 18px;
-            border: 1px solid rgba(255,255,255,0.08);
-            min-height: {min_height}px;
-        ">
-            <div style="color: {accent}; font-weight: 700; margin-bottom: 10px;">{safe(title)}</div>
-            <div style="color: white; font-size: 1.03rem; line-height: 1.65;">{safe(body)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# =========================
+# AI ANALYSIS
+# =========================
+def analyze(video_url):
+    video = get_video_data(video_url)
+    if not video.get("ok"):
+        return video
 
+    transcript_data = get_transcript(video["video_id"])
+    transcript = transcript_data["text"] if transcript_data["ok"] else "Transcript unavailable."
 
-def create_score_gauge(score):
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=score,
-            number={"suffix": "/100", "font": {"size": 34}},
-            title={"text": "Performance Score"},
-            gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": "#7c3aed"},
-                "steps": [
-                    {"range": [0, 45], "color": "#3f1d1d"},
-                    {"range": [45, 65], "color": "#4a3411"},
-                    {"range": [65, 80], "color": "#172554"},
-                    {"range": [80, 100], "color": "#052e16"},
-                ],
-            },
-        )
-    )
+    prompt = build_prompt(video, transcript)
 
-    fig.update_layout(
-        paper_bgcolor="#0f172a",
-        plot_bgcolor="#0f172a",
-        font={"color": "white"},
-        margin=dict(l=20, r=20, t=60, b=20),
-        height=320,
-    )
-    return fig
+    try:
+        if not model:
+            return {
+                "ok": True,
+                "video": video,
+                "transcript_ok": transcript_data["ok"],
+                "transcript_text": transcript,
+                "result": (
+                    "Gemini is not connected. Video metadata and transcript were fetched, "
+                    "but AI insights are unavailable until a valid Gemini API key is active."
+                )
+            }
 
+        response = model.generate_content(prompt)
+        response_text = getattr(response, "text", "") or "No AI response returned."
 
-def create_metric_bar_chart(views, likes, comments):
-    df = pd.DataFrame(
-        {
-            "Metric": ["Views", "Likes", "Comments"],
-            "Value": [views, likes, comments],
+        return {
+            "ok": True,
+            "video": video,
+            "transcript_ok": transcript_data["ok"],
+            "transcript_text": transcript,
+            "result": response_text
         }
-    )
 
-    fig = px.bar(df, x="Metric", y="Value", title="Performance Breakdown", text="Value")
-    fig.update_traces(texttemplate="%{text:,}", textposition="outside")
-    fig.update_layout(
-        paper_bgcolor="#0f172a",
-        plot_bgcolor="#0f172a",
-        font={"color": "white"},
-        xaxis_title="",
-        yaxis_title="Count",
-        margin=dict(l=20, r=20, t=60, b=20),
-        height=360,
-    )
-    return fig
+    except Exception as e:
+        error_text = str(e)
 
+        if "quota" in error_text.lower() or "429" in error_text:
+            return {
+                "ok": True,
+                "video": video,
+                "transcript_ok": transcript_data["ok"],
+                "transcript_text": transcript,
+                "result": (
+                    "Gemini quota exceeded for this API key/project.\n\n"
+                    "The app successfully fetched the video metadata and transcript, "
+                    "but AI insights are temporarily unavailable. "
+                    "Please check Gemini quota/billing or try again later."
+                )
+            }
 
-def create_engagement_chart(like_rate, comment_rate, engagement_rate):
-    df = pd.DataFrame(
-        {
-            "Metric": ["Like Rate", "Comment Rate", "Engagement Rate"],
-            "Value": [like_rate, comment_rate, engagement_rate],
+        return {
+            "ok": False,
+            "message": f"Gemini analysis failed: {error_text}"
         }
-    )
-
-    fig = px.bar(df, x="Metric", y="Value", title="Engagement Quality", text="Value")
-    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
-    fig.update_layout(
-        paper_bgcolor="#0f172a",
-        plot_bgcolor="#0f172a",
-        font={"color": "white"},
-        xaxis_title="",
-        yaxis_title="Percentage",
-        margin=dict(l=20, r=20, t=60, b=20),
-        height=360,
-    )
-    return fig
 
 
-def create_comparison_chart(video_a, video_b):
-    df = pd.DataFrame(
-        {
-            "Metric": ["Views", "Likes", "Comments", "Engagement Rate", "Score"],
-            "Video A": [
-                video_a["views"],
-                video_a["likes"],
-                video_a["comments"],
-                video_a["engagement_rate"],
-                video_a["final_score"],
-            ],
-            "Video B": [
-                video_b["views"],
-                video_b["likes"],
-                video_b["comments"],
-                video_b["engagement_rate"],
-                video_b["final_score"],
-            ],
-        }
-    )
+# =========================
+# UI
+# =========================
+tab1, tab2 = st.tabs(["Single Video", "Compare Videos"])
 
-    melted = df.melt(id_vars="Metric", var_name="Video", value_name="Value")
-    fig = px.bar(
-        melted,
-        x="Metric",
-        y="Value",
-        color="Video",
-        barmode="group",
-        title="Video A vs Video B",
-        text="Value",
-    )
-    fig.update_layout(
-        paper_bgcolor="#0f172a",
-        plot_bgcolor="#0f172a",
-        font={"color": "white"},
-        xaxis_title="",
-        yaxis_title="Value",
-        margin=dict(l=20, r=20, t=60, b=20),
-        height=420,
-    )
-    return fig
+with tab1:
+    st.subheader("Single Video Analysis")
+    url = st.text_input("Enter YouTube URL")
 
-
-def render_video_summary_card(video_data, label):
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #111827, #1f2937);
-            padding: 22px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-            min-height: 220px;
-        ">
-            <div style="font-size: 0.95rem; color: #a78bfa; font-weight: 700; margin-bottom: 10px;">
-                {safe(label)}
-            </div>
-            <div style="font-size: 1.35rem; font-weight: 800; color: white; line-height: 1.35;">
-                {safe(video_data.get('title', 'Untitled Video'))}
-            </div>
-            <div style="margin-top: 14px; color: #cbd5e1; font-size: 1rem;">
-                📺 <b>Channel:</b> {safe(video_data.get('channel', 'Unknown'))}
-            </div>
-            <div style="margin-top: 8px; color: #cbd5e1; font-size: 1rem;">
-                📅 <b>Published:</b> {safe(format_publish_date(video_data.get('published_at', '')))}
-            </div>
-            <div style="margin-top: 12px; color: #93c5fd; font-size: 1rem; font-weight: 600;">
-                {safe(video_data.get('performance_signal', ''))}
-            </div>
-            <div style="margin-top: 10px; color: #94a3b8; font-size: 0.92rem;">
-                Confidence Level: <b>{safe(video_data.get('confidence', ''))}</b>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_score_card(video_data):
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #0f172a, #111827);
-            padding: 24px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-            text-align: center;
-            min-height: 220px;
-        ">
-            <div style="font-size: 0.95rem; color: #9ca3af;">Performance Score</div>
-            <div style="font-size: 2.6rem; font-weight: 800; color: {video_data['score_color']}; margin-top: 10px;">
-                {video_data['final_score']}
-            </div>
-            <div style="font-size: 1rem; font-weight: 700; color: white; margin-top: 8px;">
-                {safe(video_data['score_headline'])}
-            </div>
-            <div style="margin-top: 14px; color: #cbd5e1; font-size: 0.95rem;">
-                {safe(video_data['decision'])}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_video_metrics(video_data):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    with c1:
-        metric_card("Views", f"{video_data['views']:,}")
-    with c2:
-        metric_card("Likes", f"{video_data['likes']:,}")
-    with c3:
-        metric_card("Comments", f"{video_data['comments']:,}")
-    with c4:
-        metric_card("Engagement Rate", f"{video_data['engagement_rate']:.2f}%")
-    with c5:
-        metric_card("Like Rate", f"{video_data['like_rate']:.2f}%")
-    with c6:
-        metric_card("Comment Rate", f"{video_data['comment_rate']:.2f}%")
-    with c7:
-        metric_card("🔥 Viral Score", f"{video_data['viral_score']:.2f}")
-
-
-def render_key_takeaway(video_data):
-    message = (
-        "strongly converts attention into engagement"
-        if video_data["final_score"] > 70
-        else "needs stronger engagement conversion to perform like a benchmark-worthy video"
-    )
-
-    st.info(
-        f"This video shows {video_data['performance_signal']}. "
-        f"It is rated {video_data['score_label']}, which suggests it {message}."
-    )
-
-
-def render_ai_analysis_tabs(video_data, analysis):
-    st.subheader("🧠 AI Insights")
-    tab1, tab2, tab3 = st.tabs(["Core Insights", "Behavioral Insight", "Decision View"])
-
-    with tab1:
-        a1, a2 = st.columns(2)
-        with a1:
-            insight_card("Content Style", analysis.get("content_style", ""), "#93c5fd")
-            st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
-            insight_card("Target Audience", analysis.get("target_audience", ""), "#86efac")
-        with a2:
-            insight_card("Why It Performs", analysis.get("engagement_reason", ""), "#fbbf24")
-            st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
-            insight_card("Improvement Suggestion", analysis.get("improvement_suggestion", ""), "#f87171")
-
-    with tab2:
-        insight_card(
-            "Psychological Triggers",
-            analysis.get("psychological_triggers", ""),
-            "#c084fc",
-            220,
-        )
-
-    with tab3:
-        d1, d2 = st.columns(2)
-        with d1:
-            metric_card("Performance Score", f"{video_data['final_score']}/100")
-            st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
-            metric_card("Rating", video_data["score_headline"])
-        with d2:
-            st.markdown(
-                f"""
-                <div style="
-                    background: linear-gradient(135deg, #111827, #1f2937);
-                    padding: 20px;
-                    border-radius: 18px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    min-height: 220px;
-                ">
-                    <div style="color: #93c5fd; font-weight: 700; margin-bottom: 10px;">Performance Signal</div>
-                    <div style="color: white; font-size: 1.02rem; margin-bottom: 18px;">
-                        {safe(video_data['performance_signal'])}
-                    </div>
-                    <div style="color: #c4b5fd; font-weight: 700; margin-bottom: 10px;">Benchmark Decision</div>
-                    <div style="color: white; font-size: 1.02rem; line-height: 1.7;">
-                        {safe(video_data['decision'])}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-def render_single_video_view(video_data, label, button_key_suffix):
-    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-    left, right = st.columns([2.2, 1])
-
-    with left:
-        render_video_summary_card(video_data, label)
-
-    with right:
-        render_score_card(video_data)
-
-    render_key_takeaway(video_data)
-
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #1e3a8a, #7c3aed);
-            padding: 20px;
-            border-radius: 16px;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-top: 10px;
-            margin-bottom: 14px;
-        ">
-        🔥 Key Insight: This video shows <b>{safe(video_data['performance_signal'])}</b> and currently rates as
-        <b>{safe(video_data['score_headline'])}</b>.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    render_video_metrics(video_data)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-
-    st.success(f"Decision Intelligence: {video_data['decision']}")
-
-    with st.expander("View thumbnail"):
-        if video_data.get("thumbnail"):
-            st.image(video_data["thumbnail"], width=260)
-
-    if st.button("🚀 Run AI Analysis", key=f"analyze_video_{button_key_suffix}_btn"):
-        with st.spinner("Analyzing video..."):
-            analysis = get_ai_analysis(video_data)
-
-        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        render_ai_analysis_tabs(video_data, analysis)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-    st.subheader("📉 Visual Intelligence")
-
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        st.plotly_chart(
-            create_metric_bar_chart(video_data["views"], video_data["likes"], video_data["comments"]),
-            use_container_width=True,
-            key=f"single_metric_bar_chart_{button_key_suffix}",
-        )
-
-    with chart_col2:
-        st.plotly_chart(
-            create_score_gauge(video_data["final_score"]),
-            use_container_width=True,
-            key=f"single_score_gauge_{button_key_suffix}",
-        )
-
-    chart_col3, chart_col4 = st.columns(2)
-
-    with chart_col3:
-        st.plotly_chart(
-            create_engagement_chart(
-                video_data["like_rate"],
-                video_data["comment_rate"],
-                video_data["engagement_rate"],
-            ),
-            use_container_width=True,
-            key=f"single_engagement_chart_{button_key_suffix}",
-        )
-
-    with chart_col4:
-        st.markdown(
-            f"""
-            <div style="
-                background: linear-gradient(135deg, #111827, #1f2937);
-                padding: 24px;
-                border-radius: 20px;
-                border: 1px solid rgba(255,255,255,0.08);
-                box-shadow: 0 10px 28px rgba(0,0,0,0.18);
-                min-height: 360px;
-            ">
-                <div style="font-size: 1.15rem; font-weight: 700; color: white; margin-bottom: 20px;">
-                    Engagement Diagnostics
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    👍 <b>Likes per 1K views:</b> {video_data['likes_per_1k']:.2f}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    💬 <b>Comments per 1K views:</b> {video_data['comments_per_1k']:.2f}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    📈 <b>Engagement quality:</b> {safe(video_data['score_headline'])}
-                </div>
-                <div style="color: #cbd5e1; font-size: 1rem; margin-bottom: 16px;">
-                    🔥 <b>Viral score:</b> {video_data['viral_score']:.2f}
-                </div>
-                <div style="color: #93c5fd; font-size: 1rem; line-height: 1.7; margin-top: 24px;">
-                    This panel helps interpret whether the video is only getting reach,
-                    or also converting attention into meaningful audience response.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-st.markdown(
-    """
-    <style>
-    .main {
-        background:
-            radial-gradient(circle at top left, rgba(124, 58, 237, 0.10), transparent 28%),
-            radial-gradient(circle at top right, rgba(37, 99, 235, 0.10), transparent 28%),
-            #0b1220;
-    }
-
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1300px;
-    }
-
-    h1, h2, h3 {
-        letter-spacing: -0.02em;
-    }
-
-    div[data-testid="stTextInput"] input {
-        border-radius: 12px;
-        border: 1px solid rgba(255,255,255,0.12);
-        background-color: #111827;
-        color: white;
-        padding: 0.75rem 1rem;
-    }
-
-    div[data-testid="stTextInput"] label p,
-    div[data-testid="stRadio"] label p,
-    div[data-testid="stMarkdownContainer"] p {
-        color: white;
-    }
-
-    div[data-testid="stButton"] > button {
-        background: linear-gradient(135deg, #2563eb, #7c3aed);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: 700;
-        padding: 0.65rem 1.2rem;
-    }
-
-    div[data-testid="stButton"] > button:hover {
-        opacity: 0.94;
-    }
-
-    div[data-testid="stExpander"] {
-        border-radius: 14px;
-        border: 1px solid rgba(255,255,255,0.08);
-        overflow: hidden;
-    }
-
-    div[data-testid="stTabs"] button {
-        font-weight: 600;
-    }
-
-    div[data-testid="stDataFrame"] {
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid rgba(255,255,255,0.08);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <div style="
-        padding: 30px;
-        border-radius: 24px;
-        background: linear-gradient(135deg, rgba(17,24,39,0.96), rgba(15,23,42,0.96));
-        border: 1px solid rgba(255,255,255,0.08);
-        box-shadow: 0 20px 50px rgba(0,0,0,0.35);
-        margin-bottom: 14px;
-    ">
-        <div style="font-size: 2.35rem; font-weight: 900; color: white;">
-            🧠 Stratify AI
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.caption("© 2026 Rahul Karaka · Stratify AI · All Rights Reserved")
-
-st.markdown(
-    """
-### 🚀 Turn YouTube videos into actionable growth strategies
-
-Analyze performance. Decode engagement. Make smarter content decisions.
-"""
-)
-
-st.caption("AI-powered content intelligence for performance-driven decisions")
-st.caption(
-    "• Decode engagement patterns  \n"
-    "• Understand audience psychology  \n"
-    "• Benchmark winning content"
-)
-
-st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-st.subheader("🔗 Input")
-input_col1, input_col2 = st.columns(2)
-
-with input_col1:
-    youtube_link_a = st.text_input(
-        "Video A URL",
-        placeholder="Paste first YouTube video link here",
-    )
-
-with input_col2:
-    youtube_link_b = st.text_input(
-        "Video B URL (optional)",
-        placeholder="Paste second YouTube video link for comparison",
-    )
-
-video_a = None
-video_b = None
-video_data_a = None
-video_data_b = None
-debug_a = None
-debug_b = None
-
-if youtube_link_a:
-    video_id_a = extract_video_id(youtube_link_a)
-    if video_id_a:
-        video_data_a, debug_a = fetch_video_data(video_id_a)
-
-        if video_data_a:
-            video_a = prepare_video_metrics(video_data_a)
+    if st.button("Analyze"):
+        if not url:
+            st.error("Please enter a YouTube URL.")
+        elif not youtube_api_key:
+            st.error("YouTube API key is missing.")
         else:
-            st.error("Could not fetch details for Video A.")
-            with st.expander("Debug details for Video A"):
-                st.json(debug_a)
-    else:
-        st.error("Invalid YouTube URL for Video A.")
+            with st.spinner("Analyzing video..."):
+                result = analyze(url)
 
-if youtube_link_b:
-    video_id_b = extract_video_id(youtube_link_b)
-    if video_id_b:
-        video_data_b, debug_b = fetch_video_data(video_id_b)
+            if not result.get("ok"):
+                st.error(result.get("message", "Unknown error"))
+                if "error" in result:
+                    st.json(result["error"])
+            else:
+                v = result["video"]
 
-        if video_data_b:
-            video_b = prepare_video_metrics(video_data_b)
+                st.subheader("Video Info")
+                st.write(f"**Title:** {v['title']}")
+                st.write(f"**Channel:** {v['channel']}")
+                st.write(f"**Published:** {v['published_at']}")
+                st.write(f"**Views:** {v['views']:,}")
+                st.write(f"**Likes:** {v['likes']:,}")
+                st.write(f"**Comments:** {v['comments']:,}")
+                st.write(f"**Like Rate:** {v['like_rate']}%")
+                st.write(f"**Comment Rate:** {v['comment_rate']}%")
+                st.write(f"**Engagement Rate:** {v['engagement_rate']}%")
+
+                st.subheader("Transcript Status")
+                if result["transcript_ok"]:
+                    st.success("Transcript loaded")
+                    with st.expander("Preview Transcript"):
+                        st.write(result["transcript_text"][:3000])
+                else:
+                    st.warning("Transcript unavailable")
+
+                st.subheader("AI Insights")
+                st.markdown(result["result"])
+
+
+with tab2:
+    st.subheader("Compare Two Videos")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        url_a = st.text_input("Video A URL")
+
+    with col2:
+        url_b = st.text_input("Video B URL")
+
+    if st.button("Compare"):
+        if not url_a or not url_b:
+            st.error("Please enter both video URLs.")
+        elif not youtube_api_key:
+            st.error("YouTube API key is missing.")
         else:
-            st.error("Could not fetch details for Video B.")
-            with st.expander("Debug details for Video B"):
-                st.json(debug_b)
-    else:
-        st.error("Invalid YouTube URL for Video B.")
+            with st.spinner("Analyzing both videos..."):
+                res_a = analyze(url_a)
+                res_b = analyze(url_b)
 
-if video_a and not video_b:
-    render_single_video_view(video_a, "Video Intelligence", "a")
+            if not res_a.get("ok"):
+                st.error(f"Video A failed: {res_a.get('message', 'Unknown error')}")
+            elif not res_b.get("ok"):
+                st.error(f"Video B failed: {res_b.get('message', 'Unknown error')}")
+            else:
+                st.subheader("Video A")
+                st.write(f"**Title:** {res_a['video']['title']}")
+                st.write(f"**Engagement Rate:** {res_a['video']['engagement_rate']}%")
 
-elif video_b and not video_a:
-    render_single_video_view(video_b, "Video Intelligence", "b")
+                st.subheader("Video B")
+                st.write(f"**Title:** {res_b['video']['title']}")
+                st.write(f"**Engagement Rate:** {res_b['video']['engagement_rate']}%")
 
-elif video_a and video_b:
-    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-    st.subheader("⚔️ Comparative Intelligence")
+                if not model:
+                    st.subheader("Comparison Result")
+                    st.warning("Gemini not connected, so AI comparison is unavailable.")
+                else:
+                    try:
+                        compare_prompt = build_comparison_prompt(
+                            res_a["video"],
+                            res_a["transcript_text"],
+                            res_a["result"],
+                            res_b["video"],
+                            res_b["transcript_text"],
+                            res_b["result"],
+                        )
+                        response = model.generate_content(compare_prompt)
+                        compare_text = getattr(response, "text", "") or "No comparison returned."
 
-    comp_left, comp_right = st.columns(2)
+                        st.subheader("Comparison Result")
+                        st.markdown(compare_text)
 
-    with comp_left:
-        render_video_summary_card(video_a, "Video A")
-        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
-        render_score_card(video_a)
-
-    with comp_right:
-        render_video_summary_card(video_b, "Video B")
-        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
-        render_score_card(video_b)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-
-    compare_table = pd.DataFrame(
-        {
-            "Metric": [
-                "Views",
-                "Likes",
-                "Comments",
-                "Engagement Rate",
-                "Like Rate",
-                "Comment Rate",
-                "Performance Score",
-                "Viral Score",
-            ],
-            "Video A": [
-                f"{video_a['views']:,}",
-                f"{video_a['likes']:,}",
-                f"{video_a['comments']:,}",
-                f"{video_a['engagement_rate']:.2f}%",
-                f"{video_a['like_rate']:.2f}%",
-                f"{video_a['comment_rate']:.2f}%",
-                f"{video_a['final_score']}/100",
-                f"{video_a['viral_score']:.2f}",
-            ],
-            "Video B": [
-                f"{video_b['views']:,}",
-                f"{video_b['likes']:,}",
-                f"{video_b['comments']:,}",
-                f"{video_b['engagement_rate']:.2f}%",
-                f"{video_b['like_rate']:.2f}%",
-                f"{video_b['comment_rate']:.2f}%",
-                f"{video_b['final_score']}/100",
-                f"{video_b['viral_score']:.2f}",
-            ],
-        }
-    )
-
-    st.dataframe(compare_table, use_container_width=True, hide_index=True)
-
-    winner = "Video A" if video_a["final_score"] >= video_b["final_score"] else "Video B"
-    winner_score = max(video_a["final_score"], video_b["final_score"])
-    winner_video = video_a if winner == "Video A" else video_b
-
-    st.success(
-        f"Comparison Decision: {winner} is currently the stronger benchmark candidate with a score of {winner_score}/100."
-    )
-
-    render_key_takeaway(winner_video)
-
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #1e3a8a, #7c3aed);
-            padding: 20px;
-            border-radius: 16px;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-top: 10px;
-            margin-bottom: 14px;
-        ">
-        🔥 Key Insight: {winner} performs better because it converts attention into engagement more effectively.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    thumb1, thumb2 = st.columns(2)
-    with thumb1:
-        with st.expander("View Video A thumbnail"):
-            if video_a.get("thumbnail"):
-                st.image(video_a["thumbnail"], width=260)
-
-    with thumb2:
-        with st.expander("View Video B thumbnail"):
-            if video_b.get("thumbnail"):
-                st.image(video_b["thumbnail"], width=260)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-    st.subheader("🤖 AI Comparison Verdict")
-
-    if st.button("🚀 Compare Videos with AI", key="compare_videos_ai_btn"):
-        with st.spinner("Analyzing comparison..."):
-            try:
-                comparison_result = compare_videos(video_a, video_b)
-            except Exception:
-                comparison_result = {
-                    "winner": winner,
-                    "reason": f"{winner} currently has the stronger overall performance score and engagement profile.",
-                    "key_difference": "Stronger engagement conversion efficiency.",
-                    "strategy_insight": "Focus on improving early hooks and stronger audience interaction triggers.",
-                }
-
-        st.markdown(
-            """
-            <div style="
-                background: linear-gradient(135deg, #111827, #1f2937);
-                padding: 24px;
-                border-radius: 20px;
-                border-left: 4px solid #7c3aed;
-                border: 1px solid rgba(255,255,255,0.08);
-                margin-top: 8px;
-                margin-bottom: 8px;
-            "></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(f"### 🏆 Winner: {comparison_result.get('winner', '')}")
-        st.write(comparison_result.get("reason", ""))
-        st.markdown(f"**Key Difference:** {comparison_result.get('key_difference', '')}")
-        st.markdown(f"**Strategy Insight:** {comparison_result.get('strategy_insight', '')}")
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-    st.subheader("🧠 AI Analysis")
-
-    analysis_choice = st.radio(
-        "Choose which video to analyze deeply",
-        ["Video A", "Video B"],
-        horizontal=True,
-    )
-
-    selected_video = video_a if analysis_choice == "Video A" else video_b
-
-    if st.button("🚀 Analyze Selected Video with AI", key="analyze_selected_video_btn"):
-        with st.spinner("Analyzing selected video..."):
-            analysis = get_ai_analysis(selected_video)
-
-        render_ai_analysis_tabs(selected_video, analysis)
-
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-    st.subheader("📊 Comparison Charts")
-
-    chart_left, chart_right = st.columns(2)
-
-    with chart_left:
-        st.plotly_chart(
-            create_comparison_chart(video_a, video_b),
-            use_container_width=True,
-            key="comparison_bar_chart",
-        )
-
-    with chart_right:
-        st.plotly_chart(
-            create_score_gauge(video_a["final_score"]),
-            use_container_width=True,
-            key="comparison_gauge_video_a",
-        )
-        st.plotly_chart(
-            create_score_gauge(video_b["final_score"]),
-            use_container_width=True,
-            key="comparison_gauge_video_b",
-        )
-
-st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
-st.markdown(
-    """
----
-Designed and developed by Rahul Karaka  
-**Stratify AI · Content Intelligence Platform**
-"""
-)
+                    except Exception as e:
+                        error_text = str(e)
+                        if "quota" in error_text.lower() or "429" in error_text:
+                            st.subheader("Comparison Result")
+                            st.warning(
+                                "Gemini quota exceeded. Individual video data loaded, "
+                                "but AI comparison is temporarily unavailable."
+                            )
+                        else:
+                            st.error(f"Comparison failed: {error_text}")
