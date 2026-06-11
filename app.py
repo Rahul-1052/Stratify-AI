@@ -438,6 +438,8 @@ if analysis_mode == "Single Video Analysis":
 
 elif analysis_mode == "Channel Intelligence":
     st.header("Channel Intelligence")
+    st.caption("Understand what is working on a channel, what is underperforming, and what content patterns are worth repeating.")
+
     channel_input = st.text_input("Paste a YouTube channel URL, @handle, or channel name")
     max_videos = st.slider("Number of recent videos to analyze", 5, 20, 10)
 
@@ -459,6 +461,23 @@ elif analysis_mode == "Channel Intelligence":
         videos = result["videos"]
         df = videos_to_dataframe(videos)
 
+        if df.empty:
+            st.warning("No videos found for this channel.")
+            st.stop()
+
+        avg_score = round(df["Performance Score"].mean(), 1)
+        avg_engagement = round(df["Engagement Rate"].mean(), 2)
+        avg_views = int(df["Views"].mean())
+
+        top_video = df.sort_values("Performance Score", ascending=False).iloc[0]
+        highest_views_video = df.sort_values("Views", ascending=False).iloc[0]
+        highest_engagement_video = df.sort_values("Engagement Rate", ascending=False).iloc[0]
+
+        hidden_gems = df[
+            (df["Views"] < df["Views"].median()) &
+            (df["Engagement Rate"] > df["Engagement Rate"].median())
+        ].sort_values("Engagement Rate", ascending=False)
+
         col1, col2 = st.columns([1, 3])
 
         with col1:
@@ -467,7 +486,7 @@ elif analysis_mode == "Channel Intelligence":
 
         with col2:
             st.subheader(channel.get("title", "Unknown Channel"))
-            st.write(channel.get("description", "")[:400])
+            st.write(channel.get("description", "")[:500])
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Subscribers", format_number(channel.get("subscribers", 0)))
@@ -477,24 +496,193 @@ elif analysis_mode == "Channel Intelligence":
 
         st.divider()
 
-        st.subheader("Performance Dashboard")
+        st.subheader("Channel Health")
 
-        if not df.empty:
-            fig_views = px.bar(df, x="Title", y="Views", title="Recent Video Views")
-            st.plotly_chart(fig_views, width="stretch")
+        h1, h2, h3, h4 = st.columns(4)
 
-            fig_score = px.line(df, x="Title", y="Performance Score", markers=True, title="Performance Score by Video")
-            st.plotly_chart(fig_score, width="stretch")
+        with h1:
+            st.metric("Avg Performance", f"{avg_score}/100")
 
+        with h2:
+            st.metric("Avg Views", format_number(avg_views))
+
+        with h3:
+            st.metric("Avg Engagement", f"{avg_engagement}%")
+
+        with h4:
+            if avg_score >= 70:
+                health_label = "Strong"
+            elif avg_score >= 50:
+                health_label = "Moderate"
+            else:
+                health_label = "Needs Work"
+
+            st.metric("Channel Health", health_label)
+
+        st.divider()
+
+        st.subheader("Winning Content")
+
+        win1, win2, win3 = st.columns(3)
+
+        with win1:
+            st.success(
+                f"""
+                ### 🏆 Best Overall
+
+                **{top_video['Title']}**
+
+                Score: **{top_video['Performance Score']}/100**  
+                Views: **{format_number(top_video['Views'])}**  
+                Engagement: **{top_video['Engagement Rate']}%**
+                """
+            )
+
+        with win2:
+            st.info(
+                f"""
+                ### 👀 Most Viewed
+
+                **{highest_views_video['Title']}**
+
+                Views: **{format_number(highest_views_video['Views'])}**  
+                Score: **{highest_views_video['Performance Score']}/100**  
+                Engagement: **{highest_views_video['Engagement Rate']}%**
+                """
+            )
+
+        with win3:
+            st.warning(
+                f"""
+                ### 💬 Best Engagement
+
+                **{highest_engagement_video['Title']}**
+
+                Engagement: **{highest_engagement_video['Engagement Rate']}%**  
+                Views: **{format_number(highest_engagement_video['Views'])}**  
+                Score: **{highest_engagement_video['Performance Score']}/100**
+                """
+            )
+
+        st.divider()
+
+        st.subheader("Reach vs Engagement Map")
+
+        st.caption("Top-right videos are the strongest: they combine high reach with strong engagement.")
+
+        fig_scatter = px.scatter(
+            df,
+            x="Views",
+            y="Engagement Rate",
+            size="Comments",
+            hover_name="Title",
+            text="Performance Score",
+            title="Which videos combine reach and engagement?"
+        )
+        fig_scatter.update_traces(textposition="top center")
+        st.plotly_chart(fig_scatter, width="stretch")
+
+        st.divider()
+
+        st.subheader("Hidden Opportunities")
+
+        if not hidden_gems.empty:
+            gem_cols = st.columns(min(3, len(hidden_gems)))
+
+            for col, (_, row) in zip(gem_cols, hidden_gems.head(3).iterrows()):
+                with col:
+                    st.info(
+                        f"""
+                        ### 💎 Hidden Gem
+
+                        **{row['Title']}**
+
+                        This video has above-average engagement but below-average reach.
+
+                        Views: **{format_number(row['Views'])}**  
+                        Engagement: **{row['Engagement Rate']}%**  
+                        Score: **{row['Performance Score']}/100**
+                        """
+                    )
+        else:
+            st.write("No clear hidden gems found in this sample. Try analyzing more videos.")
+
+        st.divider()
+
+        st.subheader("Content Pattern Diagnosis")
+
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.success(
+                f"""
+                ### What Seems To Work
+
+                - The best overall video is **{top_video['Title']}**
+                - The highest-reach video is **{highest_views_video['Title']}**
+                - Use these videos to identify repeatable topic angles, title patterns, and pacing styles.
+                """
+            )
+
+        with d2:
+            st.warning(
+                f"""
+                ### What Needs Improvement
+
+                - Average engagement is **{avg_engagement}%**
+                - Average performance score is **{avg_score}/100**
+                - If these numbers are low, the channel may need stronger hooks, better titles, or clearer audience targeting.
+                """
+            )
+
+        st.divider()
+
+        st.subheader("Recommended Creator Actions")
+
+        a1, a2, a3 = st.columns(3)
+
+        with a1:
+            st.info(
+                """
+                ### Repeat Winners
+
+                Turn your best-performing video themes into repeatable formats or series.
+                """
+            )
+
+        with a2:
+            st.warning(
+                """
+                ### Fix Packaging
+
+                Improve titles and thumbnails for videos with decent engagement but low reach.
+                """
+            )
+
+        with a3:
+            st.success(
+                """
+                ### Double Down
+
+                Use hidden gems as clues for what your core audience actually wants.
+                """
+            )
+
+        with st.expander("View detailed video data"):
             st.dataframe(
-                df[["Title", "Views", "Likes", "Comments", "Engagement Rate", "Performance Score"]],
+                df[
+                    [
+                        "Title",
+                        "Views",
+                        "Likes",
+                        "Comments",
+                        "Engagement Rate",
+                        "Performance Score",
+                    ]
+                ],
                 width="stretch",
                 hide_index=True,
             )
-
-            st.subheader("Top Performing Videos")
-            top_df = df.sort_values("Performance Score", ascending=False).head(5)
-            st.dataframe(top_df, width="stretch", hide_index=True)
 
 elif analysis_mode == "Video Comparison":
     st.header("Video Comparison")
