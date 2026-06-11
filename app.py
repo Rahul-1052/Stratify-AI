@@ -566,20 +566,35 @@ elif analysis_mode == "Channel Intelligence":
 
         st.divider()
 
-        st.subheader("Reach vs Engagement Map")
+        st.subheader("Top Videos by Views")
 
-        st.caption("Top-right videos are the strongest: they combine high reach with strong engagement.")
+        st.caption("This shows which recent videos brought the most reach to the channel.")
 
-        fig_scatter = px.scatter(
-            df,
+        top_views_df = df.sort_values("Views", ascending=True).tail(8)
+
+        fig_top_views = px.bar(
+            top_views_df,
             x="Views",
-            y="Engagement Rate",
-            size="Comments",
-            hover_name="Title",
-            text="Performance Score",
-            title="Which videos combine reach and engagement?"
+            y="Title",
+            orientation="h",
+            title="Top Recent Videos by Views",
+            text="Views"
         )
-        fig_scatter.update_traces(textposition="top center")
+
+        fig_top_views.update_traces(
+            texttemplate="%{text:,}",
+            textposition="outside"
+        )
+
+        fig_top_views.update_layout(
+            height=500,
+            yaxis_title="",
+            xaxis_title="Views",
+            margin=dict(l=20, r=40, t=60, b=40)
+        )
+
+        st.plotly_chart(fig_top_views, use_container_width=True)
+        
         st.plotly_chart(fig_scatter, width="stretch")
 
         st.divider()
