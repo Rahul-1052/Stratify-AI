@@ -1,7 +1,41 @@
 import os
 import json
+import re
 import streamlit as st
 from openai import OpenAI
+
+
+REQUIRED_KEYS = {
+    "content_style": "N/A",
+    "target_audience": "N/A",
+    "hook_strength": "N/A",
+    "viewer_retention_drivers": "N/A",
+    "content_gaps": "N/A",
+    "viral_potential": "N/A",
+    "actionable_recommendations": []
+}
+
+
+def normalize_insights(data: dict | None) -> dict:
+    if not isinstance(data, dict):
+        data = {}
+
+    normalized = {}
+
+    for key, default_value in REQUIRED_KEYS.items():
+        value = data.get(key, default_value)
+
+        if value is None or value == "":
+            value = default_value
+
+        normalized[key] = value
+
+    if not isinstance(normalized["actionable_recommendations"], list):
+        normalized["actionable_recommendations"] = [
+            str(normalized["actionable_recommendations"])
+        ]
+
+    return normalized
 
 
 def fallback_insights(payload: dict) -> dict:
@@ -15,37 +49,39 @@ def fallback_insights(payload: dict) -> dict:
         content_style = "Long-form conversation"
     elif "review" in title:
         content_style = "Review / opinion content"
+    elif any(word in title for word in ["edit", "scene", "moment", "compilation", "blacklist"]):
+        content_style = "Entertainment / fan compilation"
     else:
         content_style = "General video content"
 
     if views >= 1_000_000:
-        viral_potential = "High"
-        hook_strength = "Strong"
+        viral_potential = "85/100 — High reach potential based on strong view volume."
+        hook_strength = "8/10 — Strong initial appeal based on high audience interest."
     elif views >= 100_000:
-        viral_potential = "Medium"
-        hook_strength = "Moderate"
+        viral_potential = "65/100 — Medium potential with room for stronger packaging."
+        hook_strength = "6/10 — Moderate hook strength."
     else:
-        viral_potential = "Low"
-        hook_strength = "Needs improvement"
+        viral_potential = "40/100 — Low to medium potential unless title, thumbnail, or niche targeting improves."
+        hook_strength = "5/10 — Needs a clearer opening reason to keep viewers watching."
 
     if engagement_rate >= 4:
-        retention_drivers = "The video likely performs because the topic has clear audience interest and enough interaction signal."
+        retention_drivers = "Strong topic interest; audience interaction is healthy; content likely connects with a clear niche."
     else:
-        retention_drivers = "The video may need a stronger opening hook, clearer positioning, or more audience engagement prompts."
+        retention_drivers = "Recognizable topic or character interest; emotional/high-intensity moments may support retention; stronger pacing could improve watch time."
 
-    return {
+    return normalize_insights({
         "content_style": content_style,
-        "target_audience": "Audience inferred from title, metadata, and engagement metrics.",
+        "target_audience": "Audience inferred from title, metadata, transcript, and engagement metrics.",
         "hook_strength": hook_strength,
         "viewer_retention_drivers": retention_drivers,
-        "content_gaps": "Add more context, stronger framing, and clearer value for first-time viewers.",
+        "content_gaps": "Opening context may be unclear for new viewers; title/thumbnail could be more specific; stronger call-to-action could improve engagement.",
         "viral_potential": viral_potential,
         "actionable_recommendations": [
-            "Improve the first 5 seconds with a clearer hook.",
-            "Add stronger title/thumbnail alignment.",
-            "Use a more direct call-to-action to increase comments."
+            "Make the first 3 seconds more direct and emotionally clear.",
+            "Use a title that highlights the strongest character, conflict, or payoff.",
+            "Add a comment prompt that invites fans to debate or react."
         ],
-    }
+    })
 
 
 def safe_parse_ai_json(text: str) -> dict | None:
@@ -58,7 +94,16 @@ def safe_parse_ai_json(text: str) -> dict | None:
     try:
         return json.loads(text)
     except Exception:
-        return None
+        pass
+
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return None
+
+    return None
 
 
 def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> dict:
@@ -81,29 +126,34 @@ def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> di
         prompt = f"""
 You are Stratify AI, an expert YouTube content strategist.
 
-Analyze the video using the metadata and transcript excerpt.
+Analyze the video using metadata and transcript excerpt.
 
 Return ONLY valid JSON.
 Do not use markdown.
 Do not include explanations outside JSON.
 
-The JSON must contain exactly these keys:
-content_style
-target_audience
-hook_strength
-viewer_retention_drivers
-content_gaps
-viral_potential
-actionable_recommendations
+You MUST return this exact JSON structure with all keys filled:
+
+{{
+  "content_style": "one specific phrase describing the format/style",
+  "target_audience": "one concise sentence describing the likely viewer group",
+  "hook_strength": "score out of 10 plus one clear reason",
+  "viewer_retention_drivers": "2-3 concise retention reasons in one string",
+  "content_gaps": "2-3 concise weaknesses or missing opportunities in one string",
+  "viral_potential": "score out of 100 plus one clear reason",
+  "actionable_recommendations": [
+    "specific recommendation 1",
+    "specific recommendation 2",
+    "specific recommendation 3"
+  ]
+}}
 
 Rules:
-- content_style: one specific phrase.
-- target_audience: one concise sentence.
-- hook_strength: score and reason, example "7/10 — strong emotional opening but title could be sharper."
-- viewer_retention_drivers: 2-3 concise bullet-style points in one string.
-- content_gaps: 2-3 concise bullet-style points in one string.
-- viral_potential: score out of 100 with reason.
-- actionable_recommendations: array of exactly 3 specific recommendations.
+- Do not omit any key.
+- Do not rename keys.
+- Do not return null values.
+- actionable_recommendations must be an array of exactly 3 strings.
+- Make the analysis specific to this video, not generic.
 
 Video Data:
 Title: {payload.get("title")}
@@ -121,15 +171,15 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a senior YouTube strategist. Return only valid JSON."
+                    "content": "You are a senior YouTube strategist. Return only complete valid JSON with all required keys."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.35,
-            max_tokens=900
+            temperature=0.25,
+            max_tokens=1000
         )
 
         text = response.choices[0].message.content
@@ -140,7 +190,7 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
                 "ok": True,
                 "mode": "nvidia",
                 "error": None,
-                "data": parsed
+                "data": normalize_insights(parsed)
             }
 
         return {
