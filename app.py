@@ -611,23 +611,32 @@ elif analysis_mode == "Video Comparison":
 
         st.divider()
 
-        st.subheader("Content Strength Profile")
+        st.subheader("Plain-English Comparison")
 
         for video in videos:
+            score = video.get("Performance Score", 0)
+            views = video.get("views", 0)
+            engagement = video.get("engagement_rate", 0)
+            comments = video.get("comments", 0)
+
+            if score >= 75:
+                verdict = "Strong performer"
+                explanation = "This video has a strong overall signal and is worth repeating as a content format."
+            elif score >= 55:
+                verdict = "Moderate performer"
+                explanation = "This video has some useful signals, but the packaging or engagement can be improved."
+            else:
+                verdict = "Needs improvement"
+                explanation = "This video does not show a strong breakout signal yet."
+
             with st.container(border=True):
-                st.markdown(f"### {video.get('Label')} — {video.get('title', 'Unknown Title')[:90]}")
-
-                st.write("**Performance Strength**")
-                st.progress(video.get("Performance Score", 0) / 100)
-
-                st.write("**Reach Strength**")
-                st.progress(video.get("Reach Score", 0) / 100)
-
-                st.write("**Engagement Strength**")
-                st.progress(video.get("Engagement Score", 0) / 100)
-
-                st.write("**Community Signal**")
-                st.progress(video.get("Community Score", 0) / 100)
+                st.markdown(f"### {video.get('Label')} — {verdict}")
+                st.write(f"**Title:** {video.get('title', 'Unknown Title')}")
+                st.write(f"**Performance Score:** {score}/100")
+                st.write(f"**Views:** {format_number(views)}")
+                st.write(f"**Engagement Rate:** {engagement}%")
+                st.write(f"**Comments:** {format_number(comments)}")
+                st.info(explanation)
 
         st.divider()
 
