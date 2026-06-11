@@ -18,6 +18,13 @@ if analyze_btn:
         st.warning("Please paste a YouTube link.")
         st.stop()
 
+    if not youtube_api_key:
+        st.error("Missing YOUTUBE_API_KEY in Streamlit secrets.")
+        st.stop()
+
+    if not nvidia_api_key:
+        st.warning("Missing NVIDIA_API_KEY in Streamlit secrets. Fallback insights may be shown.")
+
     with st.spinner("Analyzing video..."):
         result = analyze_video(
             video_url=video_url,
@@ -34,6 +41,7 @@ if analyze_btn:
     ai = result["ai"]
 
     col1, col2 = st.columns([1, 2])
+
     with col1:
         if metadata.get("thumbnail"):
             st.image(metadata["thumbnail"], width="stretch")
@@ -53,21 +61,30 @@ if analyze_btn:
     st.divider()
 
     st.subheader("Transcript Status")
+
     if transcript.get("ok"):
         st.success(
             f"Transcript available | Source: {transcript.get('source')} | Language: {transcript.get('language')}"
         )
+
         with st.expander("View Transcript Excerpt"):
             st.write((transcript.get("text") or "")[:2500])
+
     else:
-        st.warning(transcript.get("error", "Transcript unavailable."))
+        st.warning(
+            "Transcript unavailable: YouTube may block transcript requests from hosted cloud environments. "
+            "AI insights were generated using video metadata only."
+        )
 
     st.divider()
 
     st.subheader("AI Insights")
 
     if ai.get("ok") and ai.get("mode") == "nvidia":
-        st.success("NVIDIA AI insights generated successfully.")
+        if transcript.get("ok"):
+            st.success("NVIDIA AI insights generated successfully using metadata and transcript context.")
+        else:
+            st.success("NVIDIA AI insights generated successfully using video metadata only.")
     elif ai.get("ok"):
         st.success(f"AI insights generated successfully via {ai.get('mode', 'provider')}.")
     else:
@@ -89,20 +106,4 @@ if analyze_btn:
         st.write(insights.get("why_it_performs", "N/A"))
 
         st.markdown("**Improvement Suggestion**")
-        st.write(insights.get("improvement_suggestion", "N/A"))
-
-    with st.expander("Debug Info"):
-        st.json({
-            "video_id": result.get("video_id"),
-            "transcript_status": {
-                "ok": transcript.get("ok"),
-                "source": transcript.get("source"),
-                "language": transcript.get("language"),
-                "error": transcript.get("error")
-            },
-            "ai_status": {
-                "ok": ai.get("ok"),
-                "mode": ai.get("mode"),
-                "error": ai.get("error")
-            }
-        })
+        st.write(insights.get("improvement_suggestion", "N/A"))      
