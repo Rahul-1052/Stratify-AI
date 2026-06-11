@@ -496,10 +496,9 @@ elif analysis_mode == "Channel Intelligence":
             top_df = df.sort_values("Performance Score", ascending=False).head(5)
             st.dataframe(top_df, width="stretch", hide_index=True)
 
-
 elif analysis_mode == "Video Comparison":
     st.header("Video Comparison")
-    st.caption("Compare 2–3 videos side-by-side and identify the stronger content strategy.")
+    st.caption("Compare 2–3 videos and understand which one has the stronger content strategy.")
 
     video_a = st.text_input("Video A URL")
     video_b = st.text_input("Video B URL")
@@ -530,13 +529,30 @@ elif analysis_mode == "Video Comparison":
                         comment_count=metadata.get("comments", 0),
                     )
 
+                    views = metadata.get("views", 0)
+                    likes = metadata.get("likes", 0)
+                    comments = metadata.get("comments", 0)
+                    engagement = metadata.get("engagement_rate", 0)
+
+                    reach_score = min(int((views / max(views, 1)) * 100), 100)
+                    engagement_score = min(int(engagement * 10), 100)
+                    community_score = min(int((comments / max(likes, 1)) * 1000), 100)
+
                     metadata["Performance Score"] = score
+                    metadata["Reach Score"] = reach_score
+                    metadata["Engagement Score"] = engagement_score
+                    metadata["Community Score"] = community_score
                     metadata["Label"] = f"Video {chr(64 + index)}"
                     videos.append(metadata)
 
         if len(videos) < 2:
             st.error("Could not fetch enough valid videos for comparison.")
             st.stop()
+
+        max_views = max(video.get("views", 0) for video in videos) or 1
+
+        for video in videos:
+            video["Reach Score"] = min(int((video.get("views", 0) / max_views) * 100), 100)
 
         df = pd.DataFrame([
             {
@@ -547,92 +563,75 @@ elif analysis_mode == "Video Comparison":
                 "Comments": video.get("comments"),
                 "Engagement Rate": video.get("engagement_rate"),
                 "Performance Score": video.get("Performance Score"),
+                "Reach Score": video.get("Reach Score"),
+                "Engagement Score": video.get("Engagement Score"),
+                "Community Score": video.get("Community Score"),
             }
             for video in videos
         ])
 
         winner = df.sort_values("Performance Score", ascending=False).iloc[0]
+        weakest = df.sort_values("Performance Score", ascending=True).iloc[0]
 
         st.divider()
 
-        st.subheader("Comparison Overview")
+        st.subheader("Winner Summary")
 
-        top1, top2, top3 = st.columns(3)
+        w1, w2, w3 = st.columns(3)
 
-        with top1:
-            st.metric("Videos Compared", len(videos))
+        with w1:
+            st.metric("Winner", winner["Video"])
 
-        with top2:
-            st.metric("Winning Video", winner["Video"])
-
-        with top3:
+        with w2:
             st.metric("Winning Score", f"{winner['Performance Score']}/100")
 
-        st.success(f"Current Winner: **{winner['Video']} — {winner['Title']}**")
+        with w3:
+            st.metric("Videos Compared", len(videos))
+
+        st.success(f"🏆 **{winner['Video']} wins:** {winner['Title']}")
 
         st.divider()
 
-        st.subheader("Video Snapshot")
+        st.subheader("Side-by-Side Video Cards")
 
-        snapshot_cols = st.columns(len(videos))
+        card_cols = st.columns(len(videos))
 
-        for col, video in zip(snapshot_cols, videos):
+        for col, video in zip(card_cols, videos):
             with col:
                 with st.container(border=True):
                     if video.get("thumbnail"):
                         st.image(video.get("thumbnail"), width="stretch")
 
                     st.markdown(f"### {video.get('Label')}")
-                    st.write(video.get("title", "Unknown Title")[:120])
-                    st.metric("Performance Score", f"{video.get('Performance Score')}/100")
+                    st.write(video.get("title", "Unknown Title")[:140])
+
+                    st.metric("Performance", f"{video.get('Performance Score')}/100")
                     st.metric("Views", format_number(video.get("views", 0)))
                     st.metric("Engagement", f"{video.get('engagement_rate', 0)}%")
 
         st.divider()
 
-        st.subheader("Performance Breakdown")
+        st.subheader("Content Strength Profile")
 
-        chart_df = df.melt(
-            id_vars=["Video", "Title"],
-            value_vars=["Views", "Likes", "Comments"],
-            var_name="Metric",
-            value_name="Value"
-        )
+        for video in videos:
+            with st.container(border=True):
+                st.markdown(f"### {video.get('Label')} — {video.get('title', 'Unknown Title')[:90]}")
 
-        fig_metrics = px.bar(
-            chart_df,
-            x="Video",
-            y="Value",
-            color="Metric",
-            barmode="group",
-            title="Reach and Engagement Activity"
-        )
-        st.plotly_chart(fig_metrics, width="stretch")
+                st.write("**Performance Strength**")
+                st.progress(video.get("Performance Score", 0) / 100)
 
-        fig_score = px.bar(
-            df,
-            x="Video",
-            y="Performance Score",
-            text="Performance Score",
-            title="Performance Score Comparison"
-        )
-        fig_score.update_traces(textposition="outside")
-        fig_score.update_layout(yaxis_range=[0, 100])
-        st.plotly_chart(fig_score, width="stretch")
+                st.write("**Reach Strength**")
+                st.progress(video.get("Reach Score", 0) / 100)
 
-        fig_engagement = px.bar(
-            df,
-            x="Video",
-            y="Engagement Rate",
-            text="Engagement Rate",
-            title="Engagement Rate Comparison"
-        )
-        fig_engagement.update_traces(texttemplate="%{text}%", textposition="outside")
-        st.plotly_chart(fig_engagement, width="stretch")
+                st.write("**Engagement Strength**")
+                st.progress(video.get("Engagement Score", 0) / 100)
+
+                st.write("**Community Signal**")
+                st.progress(video.get("Community Score", 0) / 100)
 
         st.divider()
 
-        st.subheader("Comparison Table")
+        st.subheader("Comparison Matrix")
 
         st.dataframe(
             df[
@@ -644,6 +643,9 @@ elif analysis_mode == "Video Comparison":
                     "Comments",
                     "Engagement Rate",
                     "Performance Score",
+                    "Reach Score",
+                    "Engagement Score",
+                    "Community Score",
                 ]
             ],
             width="stretch",
@@ -654,66 +656,61 @@ elif analysis_mode == "Video Comparison":
 
         st.subheader("Strategic Verdict")
 
-        verdict_col1, verdict_col2 = st.columns(2)
+        v1, v2 = st.columns(2)
 
-        with verdict_col1:
+        with v1:
             st.success(
                 f"""
-                ### Winner
+                ### What to Repeat
 
-                **{winner['Video']}**
+                **{winner['Video']}** has the strongest total signal.
 
-                **{winner['Title']}**
-
-                This video has the strongest overall performance signal based on reach, engagement, and composite scoring.
+                Repeat this video's:
+                - topic angle
+                - title structure
+                - emotional promise
+                - pacing pattern
                 """
             )
 
-        with verdict_col2:
-            loser = df.sort_values("Performance Score", ascending=True).iloc[0]
-
+        with v2:
             st.warning(
                 f"""
-                ### Biggest Improvement Opportunity
+                ### What to Improve
 
-                **{loser['Video']}**
+                **{weakest['Video']}** has the biggest improvement opportunity.
 
-                **{loser['Title']}**
-
-                This video may benefit from stronger packaging, clearer hook positioning, or a more compelling audience promise.
+                Improve this video's:
+                - opening hook
+                - thumbnail clarity
+                - title curiosity
+                - audience promise
                 """
             )
 
         st.divider()
 
-        st.subheader("Creator Takeaways")
+        st.subheader("Creator Decision")
 
-        take1, take2, take3 = st.columns(3)
-
-        with take1:
-            st.info(
-                """
-                ### Repeat
-
-                Study the winner's topic, title angle, thumbnail promise, and emotional trigger.
-                """
-            )
-
-        with take2:
-            st.warning(
-                """
-                ### Improve
-
-                Rewrite weaker titles to create more curiosity and clearer value.
-                """
-            )
-
-        with take3:
+        if winner["Performance Score"] >= 75:
             st.success(
                 """
-                ### Test Next
-
-                Create a follow-up video using the strongest performing format.
+                This is a strong content direction. Build a follow-up video using the same format,
+                but improve the title and opening hook even further.
+                """
+            )
+        elif winner["Performance Score"] >= 55:
+            st.info(
+                """
+                This is a workable content direction. The winning video has signals worth testing again,
+                but packaging and retention still need improvement.
+                """
+            )
+        else:
+            st.warning(
+                """
+                None of these videos show strong breakout signals yet. Focus on testing stronger topics,
+                clearer titles, and more direct hooks.
                 """
             )
 
