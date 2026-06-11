@@ -39,6 +39,7 @@ if analyze_btn:
     metadata = result["metadata"]
     transcript = result["transcript"]
     ai = result["ai"]
+    insights = ai.get("data", {})
 
     col1, col2 = st.columns([1, 2])
 
@@ -90,8 +91,6 @@ if analyze_btn:
     else:
         st.info("AI fallback insights shown because the live AI provider was unavailable.")
 
-    insights = ai.get("data", {})
-
     c1, c2 = st.columns(2)
 
     with c1:
@@ -101,9 +100,27 @@ if analyze_btn:
         st.markdown("**Target Audience**")
         st.write(insights.get("target_audience", "N/A"))
 
-    with c2:
-        st.markdown("**Why It Performs**")
-        st.write(insights.get("why_it_performs", "N/A"))
+        st.markdown("**Hook Strength**")
+        st.write(insights.get("hook_strength", "N/A"))
 
-        st.markdown("**Improvement Suggestion**")
-        st.write(insights.get("improvement_suggestion", "N/A"))      
+        st.markdown("**Viral Potential**")
+        st.write(insights.get("viral_potential", "N/A"))
+
+    with c2:
+        st.markdown("**Viewer Retention Drivers**")
+        st.write(insights.get("viewer_retention_drivers", "N/A"))
+
+        st.markdown("**Content Gaps**")
+        st.write(insights.get("content_gaps", "N/A"))
+
+        st.markdown("**Actionable Recommendations**")
+        recommendations = insights.get("actionable_recommendations", [])
+
+        if isinstance(recommendations, list):
+            if recommendations:
+                for rec in recommendations:
+                    st.write(f"- {rec}")
+            else:
+                st.write("N/A")
+        else:
+            st.write(recommendations or "N/A")

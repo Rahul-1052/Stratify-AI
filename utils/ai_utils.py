@@ -5,9 +5,6 @@ from openai import OpenAI
 
 
 def fallback_insights(payload: dict) -> dict:
-    """
-    Fallback when Gemini fails or quota is hit.
-    """
     views = payload.get("views", 0) or 0
     engagement_rate = payload.get("engagement_rate", 0) or 0
     title = (payload.get("title") or "").lower()
@@ -22,39 +19,40 @@ def fallback_insights(payload: dict) -> dict:
         content_style = "General video content"
 
     if views >= 1_000_000:
-        target_audience = "Broad mainstream audience"
+        viral_potential = "High"
+        hook_strength = "Strong"
     elif views >= 100_000:
-        target_audience = "Scalable niche audience"
+        viral_potential = "Medium"
+        hook_strength = "Moderate"
     else:
-        target_audience = "Focused niche audience"
+        viral_potential = "Low"
+        hook_strength = "Needs improvement"
 
-    if engagement_rate >= 8:
-        why_it_performs = "Strong interaction relative to views suggests the content resonates well with its audience."
-    elif engagement_rate >= 4:
-        why_it_performs = "Moderate interaction suggests the content has value but could be packaged more sharply."
+    if engagement_rate >= 4:
+        retention_drivers = "The video likely performs because the topic has clear audience interest and enough interaction signal."
     else:
-        why_it_performs = "Lower interaction suggests the hook, positioning, or audience match may need improvement."
-
-    improvement_suggestion = "Strengthen the first few seconds, clarify the value earlier, and end with a more engagement-worthy CTA."
+        retention_drivers = "The video may need a stronger opening hook, clearer positioning, or more audience engagement prompts."
 
     return {
         "content_style": content_style,
-        "target_audience": target_audience,
-        "why_it_performs": why_it_performs,
-        "improvement_suggestion": improvement_suggestion,
+        "target_audience": "Audience inferred from title, metadata, and engagement metrics.",
+        "hook_strength": hook_strength,
+        "viewer_retention_drivers": retention_drivers,
+        "content_gaps": "Add more context, stronger framing, and clearer value for first-time viewers.",
+        "viral_potential": viral_potential,
+        "actionable_recommendations": [
+            "Improve the first 5 seconds with a clearer hook.",
+            "Add stronger title/thumbnail alignment.",
+            "Use a more direct call-to-action to increase comments."
+        ],
     }
 
 
 def safe_parse_ai_json(text: str) -> dict | None:
-    """
-    Tries to parse model output into JSON safely.
-    """
     if not text:
         return None
 
     text = text.strip()
-
-    # remove markdown fences if present
     text = text.replace("```json", "").replace("```", "").strip()
 
     try:
@@ -62,10 +60,8 @@ def safe_parse_ai_json(text: str) -> dict | None:
     except Exception:
         return None
 
+
 def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> dict:
-    """
-    NVIDIA first, fallback second.
-    """
     nvidia_api_key = nvidia_api_key or st.secrets.get("NVIDIA_API_KEY", "") or os.getenv("NVIDIA_API_KEY")
 
     if not nvidia_api_key:
@@ -83,16 +79,33 @@ def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> di
         )
 
         prompt = f"""
-You are analyzing a YouTube video for a content intelligence app.
+You are Stratify AI, an expert YouTube content strategist.
 
-Return ONLY valid JSON with exactly these keys:
+Analyze the video using the metadata and transcript excerpt.
+
+Return ONLY valid JSON.
+Do not use markdown.
+Do not include explanations outside JSON.
+
+The JSON must contain exactly these keys:
 content_style
 target_audience
-why_it_performs
-improvement_suggestion
+hook_strength
+viewer_retention_drivers
+content_gaps
+viral_potential
+actionable_recommendations
 
-Keep answers concise and specific.
+Rules:
+- content_style: one specific phrase.
+- target_audience: one concise sentence.
+- hook_strength: score and reason, example "7/10 — strong emotional opening but title could be sharper."
+- viewer_retention_drivers: 2-3 concise bullet-style points in one string.
+- content_gaps: 2-3 concise bullet-style points in one string.
+- viral_potential: score out of 100 with reason.
+- actionable_recommendations: array of exactly 3 specific recommendations.
 
+Video Data:
 Title: {payload.get("title")}
 Channel: {payload.get("channel")}
 Description: {payload.get("description")}
@@ -108,20 +121,20 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a YouTube content strategist. Return only clean valid JSON."
+                    "content": "You are a senior YouTube strategist. Return only valid JSON."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.4,
-            max_tokens=700
+            temperature=0.35,
+            max_tokens=900
         )
 
         text = response.choices[0].message.content
-
         parsed = safe_parse_ai_json(text)
+
         if parsed:
             return {
                 "ok": True,
@@ -142,13 +155,5 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
             "ok": False,
             "mode": "fallback",
             "error": f"NVIDIA failed: {str(e)}",
-            "data": fallback_insights(payload)
-        }
-
-    except Exception as e:
-        return {
-            "ok": False,
-            "mode": "fallback",
-            "error": f"Gemini failed: {str(e)}",
             "data": fallback_insights(payload)
         }
