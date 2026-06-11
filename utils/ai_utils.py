@@ -1,237 +1,132 @@
+import os
 import json
-import os
-import re
-import os
-import streamlit as st
-import google.generativeai as genai
-
-import os
-import streamlit as st
-
-try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-import google.generativeai as genai
+from google import genai
 
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+def fallback_insights(payload: dict) -> dict:
+    """
+    Fallback when Gemini fails or quota is hit.
+    """
+    views = payload.get("views", 0) or 0
+    engagement_rate = payload.get("engagement_rate", 0) or 0
+    title = (payload.get("title") or "").lower()
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    if any(word in title for word in ["tutorial", "how to", "guide"]):
+        content_style = "Educational / tutorial"
+    elif any(word in title for word in ["podcast", "interview"]):
+        content_style = "Long-form conversation"
+    elif "review" in title:
+        content_style = "Review / opinion content"
+    else:
+        content_style = "General video content"
+
+    if views >= 1_000_000:
+        target_audience = "Broad mainstream audience"
+    elif views >= 100_000:
+        target_audience = "Scalable niche audience"
+    else:
+        target_audience = "Focused niche audience"
+
+    if engagement_rate >= 8:
+        why_it_performs = "Strong interaction relative to views suggests the content resonates well with its audience."
+    elif engagement_rate >= 4:
+        why_it_performs = "Moderate interaction suggests the content has value but could be packaged more sharply."
+    else:
+        why_it_performs = "Lower interaction suggests the hook, positioning, or audience match may need improvement."
+
+    improvement_suggestion = "Strengthen the first few seconds, clarify the value earlier, and end with a more engagement-worthy CTA."
+
+    return {
+        "content_style": content_style,
+        "target_audience": target_audience,
+        "why_it_performs": why_it_performs,
+        "improvement_suggestion": improvement_suggestion,
+    }
 
 
-def _get_model():
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in environment variables.")
-    return genai.GenerativeModel("gemini-1.5-flash")
-
-
-def _clean_json_text(text: str) -> str:
+def safe_parse_ai_json(text: str) -> dict | None:
+    """
+    Tries to parse model output into JSON safely.
+    """
     if not text:
-        return ""
+        return None
 
     text = text.strip()
 
-    # Remove markdown code fences if Gemini returns them
-    text = re.sub(r"^```json\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"^```\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-
-    # Try to isolate JSON object
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
-
-    return text.strip()
-
-
-def _safe_json_loads(text: str):
-    cleaned = _clean_json_text(text)
-    return json.loads(cleaned)
-
-
-def _truncate_text(text, limit=220):
-    if text is None:
-        return ""
-    text = str(text).strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
-
-
-def _video_context_block(video_data: dict) -> str:
-    return f"""
-VIDEO TITLE: {video_data.get("title", "Unknown")}
-CHANNEL: {video_data.get("channel", "Unknown")}
-PUBLISHED: {video_data.get("published_at", "Unknown")}
-VIEWS: {video_data.get("views", 0)}
-LIKES: {video_data.get("likes", 0)}
-COMMENTS: {video_data.get("comments", 0)}
-ENGAGEMENT RATE: {video_data.get("engagement_rate", 0)}%
-LIKE RATE: {video_data.get("like_rate", 0)}%
-COMMENT RATE: {video_data.get("comment_rate", 0)}%
-PERFORMANCE SCORE: {video_data.get("final_score", 0)}/100
-PERFORMANCE LABEL: {video_data.get("score_label", "Unknown")}
-PERFORMANCE SIGNAL: {video_data.get("performance_signal", "Unknown")}
-BENCHMARK DECISION: {video_data.get("decision", "Unknown")}
-CONFIDENCE LEVEL: {video_data.get("confidence", "Unknown")}
-""".strip()
-
-
-def analyze_video(video_data: dict) -> dict:
-    """
-    Analyze a single YouTube video and return structured portfolio-grade insights.
-    """
-
-    fallback = {
-        "content_style": "Could not determine the content style confidently from the available signals.",
-        "target_audience": "Could not determine the target audience confidently from the available signals.",
-        "engagement_reason": "The video shows measurable audience interaction, but a deeper explanation could not be generated at this time.",
-        "improvement_suggestion": "Test a stronger hook, clearer value proposition, and more comment-worthy CTA to improve engagement quality.",
-        "psychological_triggers": "Likely triggers include curiosity, relevance, clarity, and perceived usefulness, but the signal is not strong enough for a more confident breakdown.",
-    }
+    # remove markdown fences if present
+    text = text.replace("```json", "").replace("```", "").strip()
 
     try:
-        model = _get_model()
-
-        prompt = f"""
-You are a senior content strategist for a premium AI video intelligence platform called ShopPulse AI.
-
-Your task:
-Analyze the YouTube video performance signals below and generate strategic insight for creators, marketers, and product-focused portfolio reviewers.
-
-Important rules:
-1. Return ONLY valid JSON.
-2. Do NOT wrap the response in markdown.
-3. Keep each field concise but insightful.
-4. Avoid generic phrases like "good engagement" unless you explain why.
-5. Base your reasoning on the data provided.
-6. Write in a premium product-intelligence tone.
-7. Each field should feel specific, strategic, and portfolio-worthy.
-
-Video data:
-{_video_context_block(video_data)}
-
-Return JSON with exactly these keys:
-{{
-  "content_style": "...",
-  "target_audience": "...",
-  "engagement_reason": "...",
-  "improvement_suggestion": "...",
-  "psychological_triggers": "..."
-}}
-
-Field guidance:
-- content_style: infer the likely format/style of the video content
-- target_audience: infer who this video is likely resonating with
-- engagement_reason: explain why the current performance pattern may be happening
-- improvement_suggestion: give one sharp, practical improvement idea
-- psychological_triggers: explain the likely emotional/behavioral triggers behind response
-
-Make the insight useful for decision-making, not just description.
-""".strip()
-
-        response = model.generate_content(prompt)
-        parsed = _safe_json_loads(response.text)
-
-        return {
-            "content_style": _truncate_text(
-                parsed.get("content_style", fallback["content_style"]), 220
-            ),
-            "target_audience": _truncate_text(
-                parsed.get("target_audience", fallback["target_audience"]), 220
-            ),
-            "engagement_reason": _truncate_text(
-                parsed.get("engagement_reason", fallback["engagement_reason"]), 420
-            ),
-            "improvement_suggestion": _truncate_text(
-                parsed.get("improvement_suggestion", fallback["improvement_suggestion"]), 420
-            ),
-            "psychological_triggers": _truncate_text(
-                parsed.get("psychological_triggers", fallback["psychological_triggers"]), 420
-            ),
-        }
-
+        return json.loads(text)
     except Exception:
-        return fallback
+        return None
 
 
-def compare_videos(video_a: dict, video_b: dict) -> dict:
+def generate_ai_insights(payload: dict, gemini_api_key: str | None = None) -> dict:
     """
-    Compare two YouTube videos and return structured AI comparison insight.
+    Gemini first, fallback second.
     """
+    gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
 
-    winner = "Video A" if video_a.get("final_score", 0) >= video_b.get("final_score", 0) else "Video B"
-
-    fallback = {
-        "winner": winner,
-        "reason": "One video shows a stronger overall balance of reach and engagement, making it the better benchmark candidate.",
-        "key_difference": "The strongest separation appears to come from engagement efficiency rather than raw visibility alone.",
-        "strategy_insight": "Use the stronger video as the benchmark for hooks, audience fit, and engagement conversion strategy.",
-    }
+    if not gemini_api_key:
+        return {
+            "ok": False,
+            "mode": "fallback",
+            "error": "Missing GEMINI_API_KEY.",
+            "data": fallback_insights(payload)
+        }
 
     try:
-        model = _get_model()
+        client = genai.Client(api_key=gemini_api_key)
 
         prompt = f"""
-You are a senior content intelligence analyst for ShopPulse AI.
+You are analyzing a YouTube video for a content intelligence app.
 
-Your task:
-Compare two YouTube videos and determine which one is the stronger benchmark candidate.
+Return ONLY valid JSON with exactly these keys:
+content_style
+target_audience
+why_it_performs
+improvement_suggestion
 
-Important rules:
-1. Return ONLY valid JSON.
-2. Do NOT wrap the response in markdown.
-3. Be specific and strategic.
-4. Focus on benchmark quality, not only raw popularity.
-5. Use the score, engagement rate, like rate, comment rate, and signal pattern to justify your answer.
-6. Write in a premium decision-intelligence tone.
+Keep answers concise and specific.
 
-VIDEO A
-{_video_context_block(video_a)}
+Title: {payload.get("title")}
+Channel: {payload.get("channel")}
+Description: {payload.get("description")}
+Views: {payload.get("views")}
+Likes: {payload.get("likes")}
+Comments: {payload.get("comments")}
+Engagement Rate: {payload.get("engagement_rate")}
+Transcript Excerpt: {payload.get("transcript_excerpt")}
+"""
 
-VIDEO B
-{_video_context_block(video_b)}
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
 
-Return JSON with exactly these keys:
-{{
-  "winner": "Video A or Video B",
-  "reason": "...",
-  "key_difference": "...",
-  "strategy_insight": "..."
-}}
+        text = getattr(response, "text", None)
 
-Field guidance:
-- winner: choose the stronger benchmark candidate
-- reason: explain clearly why it wins
-- key_difference: explain the single biggest difference between the two
-- strategy_insight: tell the user what to learn or copy from the stronger video
-
-Do not be vague. Make the answer feel like a product strategy insight.
-""".strip()
-
-        response = model.generate_content(prompt)
-        parsed = _safe_json_loads(response.text)
-
-        ai_winner = parsed.get("winner", winner)
-        if ai_winner not in ["Video A", "Video B"]:
-            ai_winner = winner
+        parsed = safe_parse_ai_json(text)
+        if parsed:
+            return {
+                "ok": True,
+                "mode": "gemini",
+                "error": None,
+                "data": parsed
+            }
 
         return {
-            "winner": ai_winner,
-            "reason": _truncate_text(parsed.get("reason", fallback["reason"]), 420),
-            "key_difference": _truncate_text(
-                parsed.get("key_difference", fallback["key_difference"]), 260
-            ),
-            "strategy_insight": _truncate_text(
-                parsed.get("strategy_insight", fallback["strategy_insight"]), 420
-            ),
+            "ok": False,
+            "mode": "fallback",
+            "error": "Gemini returned non-JSON output.",
+            "data": fallback_insights(payload)
         }
 
-    except Exception:
-        return fallback
+    except Exception as e:
+        return {
+            "ok": False,
+            "mode": "fallback",
+            "error": f"Gemini failed: {str(e)}",
+            "data": fallback_insights(payload)
+        }
