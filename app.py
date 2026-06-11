@@ -47,48 +47,103 @@ def render_ai_insights(ai, transcript):
 
     if ai.get("ok") and ai.get("mode") == "nvidia":
         if transcript.get("ok"):
-            st.success("NVIDIA AI insights generated successfully using metadata and transcript context.")
+            st.success("NVIDIA AI insights generated using metadata + transcript.")
         else:
-            st.success("NVIDIA AI insights generated successfully using video metadata only.")
+            st.success("NVIDIA AI insights generated using metadata only.")
     elif ai.get("ok"):
-        st.success(f"AI insights generated successfully via {ai.get('mode', 'provider')}.")
+        st.success(f"AI insights generated via {ai.get('mode', 'provider')}.")
     else:
-        st.info("AI fallback insights shown because the live AI provider was unavailable.")
+        st.info("Fallback insights shown because live AI was unavailable.")
 
-    c1, c2 = st.columns(2)
+    st.markdown(
+        """
+        <style>
+        .insight-card {
+            background-color: #111827;
+            border: 1px solid #263244;
+            border-radius: 16px;
+            padding: 20px;
+            min-height: 155px;
+            margin-bottom: 18px;
+        }
+        .insight-title {
+            color: #93c5fd;
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .insight-text {
+            color: #f9fafb;
+            font-size: 16px;
+            line-height: 1.55;
+        }
+        .recommendation-card {
+            background-color: #0f172a;
+            border: 1px solid #263244;
+            border-left: 5px solid #22c55e;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+            color: #f9fafb;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-    with c1:
-        st.markdown("**Content Style**")
-        st.write(insights.get("content_style", "N/A"))
+    def card(title, value):
+        st.markdown(
+            f"""
+            <div class="insight-card">
+                <div class="insight-title">{title}</div>
+                <div class="insight-text">{value or "N/A"}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        st.markdown("**Target Audience**")
-        st.write(insights.get("target_audience", "N/A"))
+    r1c1, r1c2, r1c3 = st.columns(3)
 
-        st.markdown("**Hook Strength**")
-        st.write(insights.get("hook_strength", "N/A"))
+    with r1c1:
+        card("Content Style", insights.get("content_style", "N/A"))
 
-        st.markdown("**Viral Potential**")
-        st.write(insights.get("viral_potential", "N/A"))
+    with r1c2:
+        card("Target Audience", insights.get("target_audience", "N/A"))
 
-    with c2:
-        st.markdown("**Viewer Retention Drivers**")
-        st.write(insights.get("viewer_retention_drivers", "N/A"))
+    with r1c3:
+        card("Hook Strength", insights.get("hook_strength", "N/A"))
 
-        st.markdown("**Content Gaps**")
-        st.write(insights.get("content_gaps", "N/A"))
+    r2c1, r2c2, r2c3 = st.columns(3)
 
-        st.markdown("**Actionable Recommendations**")
-        recommendations = insights.get("actionable_recommendations", [])
+    with r2c1:
+        card("Viral Potential", insights.get("viral_potential", "N/A"))
 
-        if isinstance(recommendations, list):
-            if recommendations:
-                for rec in recommendations:
-                    st.write(f"- {rec}")
-            else:
-                st.write("N/A")
-        else:
-            st.write(recommendations or "N/A")
+    with r2c2:
+        card("Retention Drivers", insights.get("viewer_retention_drivers", "N/A"))
 
+    with r2c3:
+        card("Content Gaps", insights.get("content_gaps", "N/A"))
+
+    st.markdown("### Actionable Recommendations")
+
+    recommendations = insights.get("actionable_recommendations", [])
+
+    if isinstance(recommendations, list) and recommendations:
+        for i, rec in enumerate(recommendations, 1):
+            st.markdown(
+                f"""
+                <div class="recommendation-card">
+                    <strong>{i}.</strong> {rec}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+    else:
+        st.write("N/A")
 
 def video_card(video):
     with st.container(border=True):
