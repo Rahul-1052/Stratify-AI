@@ -14,6 +14,26 @@ st.set_page_config(page_title="Stratify AI", page_icon="📊", layout="wide")
 st.title("Stratify AI")
 st.caption("AI-Powered Creator Intelligence Platform")
 
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid #334155;
+    }
+
+    .stTextInput input {
+        border-radius: 10px;
+    }
+
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 600;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 youtube_api_key = st.secrets.get("YOUTUBE_API_KEY", "")
 nvidia_api_key = st.secrets.get("NVIDIA_API_KEY", "")
 
@@ -59,15 +79,15 @@ def render_ai_insights(ai, transcript):
         """
         <style>
         .insight-card {
-            background-color: #111827;
-            border: 1px solid #263244;
+            background-color: #1E293B;
+            border: 1px solid #334155;
             border-radius: 16px;
             padding: 20px;
             min-height: 155px;
             margin-bottom: 18px;
         }
         .insight-title {
-            color: #93c5fd;
+            color: #10B981;
             font-size: 13px;
             font-weight: 800;
             margin-bottom: 12px;
@@ -75,18 +95,18 @@ def render_ai_insights(ai, transcript):
             letter-spacing: 0.8px;
         }
         .insight-text {
-            color: #f9fafb;
+            color: #F8FAFC;
             font-size: 16px;
             line-height: 1.55;
         }
         .recommendation-card {
-            background-color: #0f172a;
-            border: 1px solid #263244;
-            border-left: 5px solid #22c55e;
+            background-color: #1E293B;
+            border: 1px solid #334155;
+            border-left: 5px solid #10B981;
             border-radius: 12px;
             padding: 16px 18px;
             margin-bottom: 12px;
-            color: #f9fafb;
+            color: #F8FAFC;
             font-size: 16px;
             line-height: 1.5;
         }
