@@ -71,7 +71,7 @@ if analyze_btn:
     if ai.get("mode") == "gemini":
         st.success("Gemini insights generated successfully.")
     else:
-        st.info("Fallback insights shown because Gemini was unavailable.")
+        st.info("AI fallback insights shown because the live AI provider was unavailable.")
 
     insights = ai.get("data", {})
 

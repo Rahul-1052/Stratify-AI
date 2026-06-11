@@ -1,6 +1,7 @@
 import os
 import json
-from google import genai
+import streamlit as st
+from openai import OpenAI
 
 
 def fallback_insights(payload: dict) -> dict:
@@ -61,23 +62,25 @@ def safe_parse_ai_json(text: str) -> dict | None:
     except Exception:
         return None
 
-
-def generate_ai_insights(payload: dict, gemini_api_key: str | None = None) -> dict:
+def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> dict:
     """
-    Gemini first, fallback second.
+    NVIDIA first, fallback second.
     """
-    gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+    nvidia_api_key = nvidia_api_key or st.secrets.get("NVIDIA_API_KEY", "") or os.getenv("NVIDIA_API_KEY")
 
-    if not gemini_api_key:
+    if not nvidia_api_key:
         return {
             "ok": False,
             "mode": "fallback",
-            "error": "Missing GEMINI_API_KEY.",
+            "error": "Missing NVIDIA_API_KEY.",
             "data": fallback_insights(payload)
         }
 
     try:
-        client = genai.Client(api_key=gemini_api_key)
+        client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=nvidia_api_key
+        )
 
         prompt = f"""
 You are analyzing a YouTube video for a content intelligence app.
@@ -100,18 +103,29 @@ Engagement Rate: {payload.get("engagement_rate")}
 Transcript Excerpt: {payload.get("transcript_excerpt")}
 """
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
+        response = client.chat.completions.create(
+            model="meta/llama-3.3-70b-instruct",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a YouTube content strategist. Return only clean valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.4,
+            max_tokens=700
         )
 
-        text = getattr(response, "text", None)
+        text = response.choices[0].message.content
 
         parsed = safe_parse_ai_json(text)
         if parsed:
             return {
                 "ok": True,
-                "mode": "gemini",
+                "mode": "nvidia",
                 "error": None,
                 "data": parsed
             }
@@ -119,7 +133,15 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
         return {
             "ok": False,
             "mode": "fallback",
-            "error": "Gemini returned non-JSON output.",
+            "error": "NVIDIA returned non-JSON output.",
+            "data": fallback_insights(payload)
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "mode": "fallback",
+            "error": f"NVIDIA failed: {str(e)}",
             "data": fallback_insights(payload)
         }
 
