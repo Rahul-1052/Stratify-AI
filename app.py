@@ -13,47 +13,6 @@ st.set_page_config(page_title="Stratify AI", page_icon="📊", layout="wide")
 
 st.title("Stratify AI")
 st.caption("AI-Powered Creator Intelligence Platform")
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background: linear-gradient(135deg, #0B1020 0%, #111827 50%, #1E1B4B 100%);
-    }
-
-    section[data-testid="stSidebar"] {
-        background-color: #070B16;
-        border-right: 1px solid #263244;
-    }
-
-    div[data-testid="stMetric"] {
-        background-color: rgba(17, 24, 39, 0.85);
-        border: 1px solid #263244;
-        padding: 16px;
-        border-radius: 16px;
-    }
-
-    div[data-testid="stMetricValue"] {
-        color: #A78BFA;
-    }
-
-    .stButton > button {
-        background: linear-gradient(90deg, #7C3AED, #2563EB);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 0.7rem 1rem;
-        font-weight: 700;
-    }
-
-    .stButton > button:hover {
-        background: linear-gradient(90deg, #8B5CF6, #3B82F6);
-        color: white;
-        border: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 youtube_api_key = st.secrets.get("YOUTUBE_API_KEY", "")
 nvidia_api_key = st.secrets.get("NVIDIA_API_KEY", "")
