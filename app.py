@@ -188,53 +188,184 @@ def videos_to_dataframe(videos):
 
     return pd.DataFrame(rows)
 
-
 def generate_growth_strategy(channel, df):
     avg_views = int(df["Views"].mean()) if not df.empty else 0
     avg_engagement = round(df["Engagement Rate"].mean(), 2) if not df.empty else 0
-    best_video = df.sort_values("Performance Score", ascending=False).iloc[0] if not df.empty else None
 
-    st.subheader("Creator Growth Diagnosis")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Avg Views", format_number(avg_views))
-    c2.metric("Avg Engagement", f"{avg_engagement}%")
-    c3.metric("Videos Studied", len(df))
-
-    st.markdown("### Current Positioning")
-    st.write(
-        f"{channel.get('title', 'This channel')} appears to have a content base that can be improved through stronger packaging, clearer repeatable formats, and more intentional audience targeting."
+    best_video = (
+        df.sort_values("Performance Score", ascending=False).iloc[0]
+        if not df.empty else None
     )
 
-    st.markdown("### Strongest Signal")
-    if best_video is not None:
-        st.write(f"Your strongest recent signal is: **{best_video['Title']}**")
-        st.write(
-            "This should be studied for topic, title structure, pacing, and audience emotion."
+    st.subheader("🚀 Creator Growth Strategy")
+
+    m1, m2, m3 = st.columns(3)
+
+    with m1:
+        st.metric("Average Views", format_number(avg_views))
+
+    with m2:
+        st.metric("Average Engagement", f"{avg_engagement}%")
+
+    with m3:
+        st.metric("Videos Studied", len(df))
+
+    st.divider()
+
+    st.markdown("## 🎯 Channel Positioning")
+
+    st.info(
+        f"""
+        **{channel.get('title', 'This channel')}** has a foundation to grow through
+        stronger content packaging, clearer audience targeting,
+        and a more repeatable content strategy.
+        """
+    )
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("## ✅ What's Working")
+
+        if best_video is not None:
+            st.success(
+                f"Top Performing Video:\n\n**{best_video['Title']}**"
+            )
+
+        st.write("• Existing audience interest is visible.")
+        st.write("• Content niche already has engagement.")
+        st.write("• There are repeatable content opportunities.")
+
+    with col2:
+        st.markdown("## ⚠ Growth Bottlenecks")
+
+        st.warning(
+            """
+            • Content formats may not be consistent.
+
+            • Titles could create stronger curiosity.
+
+            • New viewers may lack context.
+
+            • Packaging is likely limiting growth.
+            """
         )
 
-    st.markdown("### 30-Day Growth Plan")
-    st.write("- Identify the top 3 videos by performance score and turn them into repeatable content formats.")
-    st.write("- Rewrite titles to make the emotional payoff clearer.")
-    st.write("- Add stronger first 5-second hooks in every video.")
-    st.write("- Use comment prompts that invite reactions, opinions, or debate.")
+    st.divider()
 
-    st.markdown("### Next 10 Video Ideas")
+    st.markdown("## 📅 30-Day Growth Plan")
+
+    plan1, plan2, plan3 = st.columns(3)
+
+    with plan1:
+        st.markdown(
+            """
+            ### Week 1
+
+            - Identify top 3 videos
+            - Study titles
+            - Study thumbnails
+            - Identify common themes
+            """
+        )
+
+    with plan2:
+        st.markdown(
+            """
+            ### Week 2
+
+            - Create 3 videos around winning topics
+            - Improve first 5 seconds
+            - Improve hooks
+            """
+        )
+
+    with plan3:
+        st.markdown(
+            """
+            ### Week 3-4
+
+            - Double down on winners
+            - Remove weak formats
+            - Increase posting consistency
+            """
+        )
+
+    st.divider()
+
+    st.markdown("## 💡 Next 10 Video Ideas")
+
     ideas = [
-        "A sequel or follow-up to the best performing recent video",
-        "A breakdown explaining why the top video worked",
-        "A shorter, high-retention version of the same topic",
-        "A comparison video using two popular topics or characters",
-        "A reaction-style video built around audience comments",
-        "A beginner-friendly version of the channel’s strongest niche",
-        "A myth-vs-reality format around the channel topic",
-        "A ranking video based on fan favorites",
-        "A controversial but safe opinion video",
-        "A compilation or recap optimized around one clear emotion",
+        "Follow-up to your best performing video",
+        "Behind the scenes of a popular topic",
+        "Ranking format within your niche",
+        "Audience reaction video",
+        "Common mistakes in your niche",
+        "Myth vs Reality format",
+        "Top 5 list format",
+        "Beginner guide version",
+        "Expert breakdown version",
+        "Most requested audience topic"
     ]
 
-    for i, idea in enumerate(ideas, 1):
-        st.write(f"{i}. {idea}")
+    for i, idea in enumerate(ideas, start=1):
+        st.write(f"**{i}.** {idea}")
+
+    st.divider()
+
+    st.markdown("## 🎬 Content Expansion Opportunities")
+
+    exp1, exp2, exp3 = st.columns(3)
+
+    with exp1:
+        st.success(
+            """
+            ### Shorts
+
+            Convert best moments
+            into short-form clips.
+            """
+        )
+
+    with exp2:
+        st.info(
+            """
+            ### Series Content
+
+            Turn successful topics
+            into repeatable series.
+            """
+        )
+
+    with exp3:
+        st.warning(
+            """
+            ### Audience Growth
+
+            Create content that
+            attracts new viewers.
+            """
+        )
+
+    st.divider()
+
+    st.markdown("## 🏁 Strategic Recommendation")
+
+    st.success(
+        """
+        Focus less on producing more videos.
+
+        Focus on repeating what already works,
+        improving packaging,
+        and increasing retention in the first 30 seconds.
+
+        The fastest growth usually comes from
+        improving winning formats rather than
+        constantly testing completely new ones.
+        """
+    )
 
 
 if analysis_mode == "Single Video Analysis":
