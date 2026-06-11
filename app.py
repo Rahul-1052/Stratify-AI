@@ -7,11 +7,11 @@ st.title("Stratify AI")
 st.caption("YouTube Content Intelligence")
 
 youtube_api_key = st.secrets.get("YOUTUBE_API_KEY", "")
-gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+nvidia_api_key = st.secrets.get("NVIDIA_API_KEY", "")
 
 video_url = st.text_input("Paste a YouTube link")
 
-analyze_btn = st.button("Analyze Video", use_container_width=True)
+analyze_btn = st.button("Analyze Video", width="stretch")
 
 if analyze_btn:
     if not video_url.strip():
@@ -22,7 +22,7 @@ if analyze_btn:
         result = analyze_video(
             video_url=video_url,
             youtube_api_key=youtube_api_key,
-            gemini_api_key=gemini_api_key
+            nvidia_api_key=nvidia_api_key
         )
 
     if not result.get("ok"):
@@ -33,18 +33,17 @@ if analyze_btn:
     transcript = result["transcript"]
     ai = result["ai"]
 
-    # Thumbnail + title
     col1, col2 = st.columns([1, 2])
     with col1:
         if metadata.get("thumbnail"):
-            st.image(metadata["thumbnail"], use_container_width=True)
+            st.image(metadata["thumbnail"], width="stretch")
+
     with col2:
         st.subheader(metadata.get("title", "Unknown Title"))
         st.write(f"**Channel:** {metadata.get('channel', 'Unknown')}")
         st.write(f"**Published:** {metadata.get('published_at', 'Unknown')}")
         st.write(f"**Performance Score:** {result.get('performance_score', 0)}/100")
 
-    # Metrics
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Views", f"{metadata.get('views', 0):,}")
     m2.metric("Likes", f"{metadata.get('likes', 0):,}")
@@ -53,7 +52,6 @@ if analyze_btn:
 
     st.divider()
 
-    # Transcript status
     st.subheader("Transcript Status")
     if transcript.get("ok"):
         st.success(
@@ -66,16 +64,19 @@ if analyze_btn:
 
     st.divider()
 
-    # AI insights
     st.subheader("AI Insights")
-    if ai.get("mode") == "gemini":
-        st.success("Gemini insights generated successfully.")
+
+    if ai.get("ok") and ai.get("mode") == "nvidia":
+        st.success("NVIDIA AI insights generated successfully.")
+    elif ai.get("ok"):
+        st.success(f"AI insights generated successfully via {ai.get('mode', 'provider')}.")
     else:
         st.info("AI fallback insights shown because the live AI provider was unavailable.")
 
     insights = ai.get("data", {})
 
     c1, c2 = st.columns(2)
+
     with c1:
         st.markdown("**Content Style**")
         st.write(insights.get("content_style", "N/A"))
@@ -93,7 +94,12 @@ if analyze_btn:
     with st.expander("Debug Info"):
         st.json({
             "video_id": result.get("video_id"),
-            "transcript_status": transcript,
+            "transcript_status": {
+                "ok": transcript.get("ok"),
+                "source": transcript.get("source"),
+                "language": transcript.get("language"),
+                "error": transcript.get("error")
+            },
             "ai_status": {
                 "ok": ai.get("ok"),
                 "mode": ai.get("mode"),

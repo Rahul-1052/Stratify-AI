@@ -47,7 +47,7 @@ def calculate_performance_score(views: int, engagement_rate: float, like_count: 
     return min(score, 100)
 
 
-def analyze_video(video_url: str, youtube_api_key: str, gemini_api_key: str | None = None) -> dict:
+def analyze_video(video_url: str, youtube_api_key: str, nvidia_api_key: str | None = None) -> dict:
     """
     Main pipeline:
     URL -> Metadata -> Transcript -> AI -> Final output
@@ -81,8 +81,8 @@ def analyze_video(video_url: str, youtube_api_key: str, gemini_api_key: str | No
         "transcript_excerpt": clean_transcript(transcript_text, max_chars=5000),
     }
 
-    ai_result = generate_ai_insights(payload, gemini_api_key)
-
+    ai_result = generate_ai_insights(payload, nvidia_api_key)
+    
     performance_score = calculate_performance_score(
         views=metadata.get("views", 0),
         engagement_rate=metadata.get("engagement_rate", 0),
