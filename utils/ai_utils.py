@@ -12,8 +12,25 @@ REQUIRED_KEYS = {
     "viewer_retention_drivers": "N/A",
     "content_gaps": "N/A",
     "viral_potential": "N/A",
-    "actionable_recommendations": []
+    "actionable_recommendations": [],
+    "why_this_video_works": [],
+    "what_to_copy": [],
+    "what_to_improve": [],
+    "better_titles": [],
+    "thumbnail_concepts": [],
+    "next_video_ideas": []
 }
+
+
+LIST_KEYS = [
+    "actionable_recommendations",
+    "why_this_video_works",
+    "what_to_copy",
+    "what_to_improve",
+    "better_titles",
+    "thumbnail_concepts",
+    "next_video_ideas"
+]
 
 
 def normalize_insights(data: dict | None) -> dict:
@@ -30,10 +47,9 @@ def normalize_insights(data: dict | None) -> dict:
 
         normalized[key] = value
 
-    if not isinstance(normalized["actionable_recommendations"], list):
-        normalized["actionable_recommendations"] = [
-            str(normalized["actionable_recommendations"])
-        ]
+    for key in LIST_KEYS:
+        if not isinstance(normalized[key], list):
+            normalized[key] = [str(normalized[key])] if normalized[key] else []
 
     return normalized
 
@@ -41,7 +57,8 @@ def normalize_insights(data: dict | None) -> dict:
 def fallback_insights(payload: dict) -> dict:
     views = payload.get("views", 0) or 0
     engagement_rate = payload.get("engagement_rate", 0) or 0
-    title = (payload.get("title") or "").lower()
+    title_raw = payload.get("title") or "this video"
+    title = title_raw.lower()
 
     if any(word in title for word in ["tutorial", "how to", "guide"]):
         content_style = "Educational / tutorial"
@@ -81,6 +98,36 @@ def fallback_insights(payload: dict) -> dict:
             "Use a title that highlights the strongest character, conflict, or payoff.",
             "Add a comment prompt that invites fans to debate or react."
         ],
+        "why_this_video_works": [
+            "The topic appears to match an existing audience interest.",
+            "The title suggests a recognizable moment or clear content angle.",
+            "The video has enough metadata signal to support a focused niche."
+        ],
+        "what_to_copy": [
+            "Repeat the strongest topic or character angle.",
+            "Keep the title focused on a clear payoff.",
+            "Use the most intense or recognizable moment early."
+        ],
+        "what_to_improve": [
+            "Make the first few seconds easier for new viewers to understand.",
+            "Improve title specificity and emotional pull.",
+            "Use stronger calls-to-action to increase comments."
+        ],
+        "better_titles": [
+            f"Why {title_raw} Got Everyone Talking",
+            f"The Moment That Made {title_raw} Worth Watching",
+            f"{title_raw} — The Scene Fans Can't Stop Rewatching"
+        ],
+        "thumbnail_concepts": [
+            "Close-up reaction shot with a short emotional phrase.",
+            "Split-screen conflict image showing two opposing forces.",
+            "High-contrast frame highlighting the strongest moment."
+        ],
+        "next_video_ideas": [
+            "Create a follow-up around the strongest character or topic.",
+            "Make a shorter high-retention version for Shorts.",
+            "Create a ranking or comparison video based on the same niche."
+        ]
     })
 
 
@@ -124,7 +171,15 @@ def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> di
         )
 
         prompt = f"""
-You are Stratify AI, an expert YouTube content strategist.
+You are Stratify AI, a senior YouTube strategist and creator growth analyst.
+
+Your job is not just to describe the video.
+Your job is to help a creator understand:
+- why the video may perform
+- what should be repeated
+- what should be improved
+- what title/thumbnail strategy would increase click-through
+- what video should be made next
 
 Analyze the video using metadata and transcript excerpt.
 
@@ -141,6 +196,36 @@ You MUST return this exact JSON structure with all keys filled:
   "viewer_retention_drivers": "2-3 concise retention reasons in one string",
   "content_gaps": "2-3 concise weaknesses or missing opportunities in one string",
   "viral_potential": "score out of 100 plus one clear reason",
+  "why_this_video_works": [
+    "specific reason 1",
+    "specific reason 2",
+    "specific reason 3"
+  ],
+  "what_to_copy": [
+    "specific thing to repeat 1",
+    "specific thing to repeat 2",
+    "specific thing to repeat 3"
+  ],
+  "what_to_improve": [
+    "specific improvement 1",
+    "specific improvement 2",
+    "specific improvement 3"
+  ],
+  "better_titles": [
+    "better title 1",
+    "better title 2",
+    "better title 3"
+  ],
+  "thumbnail_concepts": [
+    "thumbnail concept 1",
+    "thumbnail concept 2",
+    "thumbnail concept 3"
+  ],
+  "next_video_ideas": [
+    "next video idea 1",
+    "next video idea 2",
+    "next video idea 3"
+  ],
   "actionable_recommendations": [
     "specific recommendation 1",
     "specific recommendation 2",
@@ -152,8 +237,13 @@ Rules:
 - Do not omit any key.
 - Do not rename keys.
 - Do not return null values.
-- actionable_recommendations must be an array of exactly 3 strings.
-- Make the analysis specific to this video, not generic.
+- All list fields must contain exactly 3 strings.
+- Make every answer specific to this video, not generic.
+- Use the transcript if available.
+- If transcript is unavailable, rely on title, description, and metadata.
+- Better titles should be realistic YouTube titles, not corporate-sounding.
+- Thumbnail concepts should describe the visual idea and emotional trigger.
+- Next video ideas should be based on the same audience and content niche.
 
 Video Data:
 Title: {payload.get("title")}
@@ -178,8 +268,8 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
                     "content": prompt
                 }
             ],
-            temperature=0.25,
-            max_tokens=1000
+            temperature=0.35,
+            max_tokens=1600
         )
 
         text = response.choices[0].message.content
