@@ -518,16 +518,20 @@ elif analysis_mode == "Video Comparison":
 
         videos = []
 
-        with st.spinner("Comparing videos..."):
-            for vid in video_ids:
+        with st.spinner("Building comparison intelligence..."):
+            for index, vid in enumerate(video_ids, start=1):
                 metadata = fetch_video_metadata(vid, youtube_api_key)
+
                 if metadata.get("ok"):
-                    metadata["Performance Score"] = calculate_performance_score(
+                    score = calculate_performance_score(
                         views=metadata.get("views", 0),
                         engagement_rate=metadata.get("engagement_rate", 0),
                         like_count=metadata.get("likes", 0),
                         comment_count=metadata.get("comments", 0),
                     )
+
+                    metadata["Performance Score"] = score
+                    metadata["Label"] = f"Video {chr(64 + index)}"
                     videos.append(metadata)
 
         if len(videos) < 2:
@@ -536,6 +540,7 @@ elif analysis_mode == "Video Comparison":
 
         df = pd.DataFrame([
             {
+                "Video": video.get("Label"),
                 "Title": video.get("title"),
                 "Views": video.get("views"),
                 "Likes": video.get("likes"),
@@ -546,23 +551,171 @@ elif analysis_mode == "Video Comparison":
             for video in videos
         ])
 
-        st.subheader("Comparison Table")
-        st.dataframe(df, width="stretch", hide_index=True)
-
-        fig = px.bar(df, x="Title", y="Performance Score", title="Performance Score Comparison")
-        st.plotly_chart(fig, width="stretch")
-
         winner = df.sort_values("Performance Score", ascending=False).iloc[0]
 
-        st.subheader("AI-Style Verdict")
-        st.success(f"Winner: {winner['Title']}")
+        st.divider()
 
-        st.write("This video currently has the strongest overall performance signal based on views, engagement, likes, comments, and composite score.")
+        st.subheader("Comparison Overview")
 
-        st.markdown("### Strategic Takeaways")
-        st.write("- Study the winner’s title structure and topic angle.")
-        st.write("- Compare the opening hook and emotional payoff.")
-        st.write("- Use the lower-performing video as a rewrite opportunity for title, thumbnail, and pacing.")
+        top1, top2, top3 = st.columns(3)
+
+        with top1:
+            st.metric("Videos Compared", len(videos))
+
+        with top2:
+            st.metric("Winning Video", winner["Video"])
+
+        with top3:
+            st.metric("Winning Score", f"{winner['Performance Score']}/100")
+
+        st.success(f"Current Winner: **{winner['Video']} — {winner['Title']}**")
+
+        st.divider()
+
+        st.subheader("Video Snapshot")
+
+        snapshot_cols = st.columns(len(videos))
+
+        for col, video in zip(snapshot_cols, videos):
+            with col:
+                with st.container(border=True):
+                    if video.get("thumbnail"):
+                        st.image(video.get("thumbnail"), width="stretch")
+
+                    st.markdown(f"### {video.get('Label')}")
+                    st.write(video.get("title", "Unknown Title")[:120])
+                    st.metric("Performance Score", f"{video.get('Performance Score')}/100")
+                    st.metric("Views", format_number(video.get("views", 0)))
+                    st.metric("Engagement", f"{video.get('engagement_rate', 0)}%")
+
+        st.divider()
+
+        st.subheader("Performance Breakdown")
+
+        chart_df = df.melt(
+            id_vars=["Video", "Title"],
+            value_vars=["Views", "Likes", "Comments"],
+            var_name="Metric",
+            value_name="Value"
+        )
+
+        fig_metrics = px.bar(
+            chart_df,
+            x="Video",
+            y="Value",
+            color="Metric",
+            barmode="group",
+            title="Reach and Engagement Activity"
+        )
+        st.plotly_chart(fig_metrics, width="stretch")
+
+        fig_score = px.bar(
+            df,
+            x="Video",
+            y="Performance Score",
+            text="Performance Score",
+            title="Performance Score Comparison"
+        )
+        fig_score.update_traces(textposition="outside")
+        fig_score.update_layout(yaxis_range=[0, 100])
+        st.plotly_chart(fig_score, width="stretch")
+
+        fig_engagement = px.bar(
+            df,
+            x="Video",
+            y="Engagement Rate",
+            text="Engagement Rate",
+            title="Engagement Rate Comparison"
+        )
+        fig_engagement.update_traces(texttemplate="%{text}%", textposition="outside")
+        st.plotly_chart(fig_engagement, width="stretch")
+
+        st.divider()
+
+        st.subheader("Comparison Table")
+
+        st.dataframe(
+            df[
+                [
+                    "Video",
+                    "Title",
+                    "Views",
+                    "Likes",
+                    "Comments",
+                    "Engagement Rate",
+                    "Performance Score",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.divider()
+
+        st.subheader("Strategic Verdict")
+
+        verdict_col1, verdict_col2 = st.columns(2)
+
+        with verdict_col1:
+            st.success(
+                f"""
+                ### Winner
+
+                **{winner['Video']}**
+
+                **{winner['Title']}**
+
+                This video has the strongest overall performance signal based on reach, engagement, and composite scoring.
+                """
+            )
+
+        with verdict_col2:
+            loser = df.sort_values("Performance Score", ascending=True).iloc[0]
+
+            st.warning(
+                f"""
+                ### Biggest Improvement Opportunity
+
+                **{loser['Video']}**
+
+                **{loser['Title']}**
+
+                This video may benefit from stronger packaging, clearer hook positioning, or a more compelling audience promise.
+                """
+            )
+
+        st.divider()
+
+        st.subheader("Creator Takeaways")
+
+        take1, take2, take3 = st.columns(3)
+
+        with take1:
+            st.info(
+                """
+                ### Repeat
+
+                Study the winner's topic, title angle, thumbnail promise, and emotional trigger.
+                """
+            )
+
+        with take2:
+            st.warning(
+                """
+                ### Improve
+
+                Rewrite weaker titles to create more curiosity and clearer value.
+                """
+            )
+
+        with take3:
+            st.success(
+                """
+                ### Test Next
+
+                Create a follow-up video using the strongest performing format.
+                """
+            )
 
 
 elif analysis_mode == "Growth Strategy Generator":
