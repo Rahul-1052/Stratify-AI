@@ -594,9 +594,9 @@ elif analysis_mode == "Channel Intelligence":
         )
 
         st.plotly_chart(fig_top_views, use_container_width=True)
-        
-        st.plotly_chart(fig_scatter, width="stretch")
 
+        st.plotly_chart(fig_top_views, use_container_width=True)
+        
         st.divider()
 
         st.subheader("Hidden Opportunities")
