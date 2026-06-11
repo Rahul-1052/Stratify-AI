@@ -99,7 +99,7 @@ def render_ai_insights(ai, transcript):
             font-size: 16px;
             line-height: 1.55;
         }
-        .recommendation-card {
+        .strategy-card {
             background-color: #1E293B;
             border: 1px solid #334155;
             border-left: 5px solid #10B981;
@@ -126,6 +126,20 @@ def render_ai_insights(ai, transcript):
             unsafe_allow_html=True
         )
 
+    def list_cards(items):
+        if isinstance(items, list) and items:
+            for i, item in enumerate(items, 1):
+                st.markdown(
+                    f"""
+                    <div class="strategy-card">
+                        <strong>{i}.</strong> {item}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        else:
+            st.write("N/A")
+
     r1c1, r1c2, r1c3 = st.columns(3)
 
     with r1c1:
@@ -148,22 +162,52 @@ def render_ai_insights(ai, transcript):
     with r2c3:
         card("Content Gaps", insights.get("content_gaps", "N/A"))
 
-    st.markdown("### Actionable Recommendations")
+    st.divider()
 
-    recommendations = insights.get("actionable_recommendations", [])
+    st.subheader("Creator Strategy")
 
-    if isinstance(recommendations, list) and recommendations:
-        for i, rec in enumerate(recommendations, 1):
-            st.markdown(
-                f"""
-                <div class="recommendation-card">
-                    <strong>{i}.</strong> {rec}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-    else:
-        st.write("N/A")
+    tab1, tab2, tab3 = st.tabs(
+        [
+            "Why It Works",
+            "Copy / Improve",
+            "Content Ideas",
+        ]
+    )
+
+    with tab1:
+        st.markdown("### Why This Video Works")
+        list_cards(insights.get("why_this_video_works", []))
+
+    with tab2:
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.markdown("### What To Copy")
+            list_cards(insights.get("what_to_copy", []))
+
+        with c2:
+            st.markdown("### What To Improve")
+            list_cards(insights.get("what_to_improve", []))
+
+    with tab3:
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.markdown("### Better Titles")
+            list_cards(insights.get("better_titles", []))
+
+        with c2:
+            st.markdown("### Thumbnail Concepts")
+            list_cards(insights.get("thumbnail_concepts", []))
+
+        with c3:
+            st.markdown("### Next Video Ideas")
+            list_cards(insights.get("next_video_ideas", []))
+
+    st.divider()
+
+    st.subheader("Actionable Recommendations")
+    list_cards(insights.get("actionable_recommendations", []))
 
 def video_card(video):
     with st.container(border=True):
