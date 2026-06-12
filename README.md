@@ -1,58 +1,104 @@
-# 🧠 Stratify AI
+# Stratify
 
-AI-powered YouTube content intelligence platform for analyzing video performance, engagement behavior, and strategic decision-making.
+### See What Works. Create What Wins.
 
----
+Stratify is a creator intelligence platform that transforms YouTube performance data into actionable insights and growth strategies.
 
-## 🚀 Features
-
-- Extracts real-time YouTube video metrics
-- Calculates engagement & performance scores
-- AI-powered insights (content style, audience, psychology)
-- ⚔️ Compare two videos side-by-side
-- Decision intelligence for benchmarking content
+**Data. Insights. Strategy.**
 
 ---
 
-## 🛠 Tech Stack
+## Features
 
-- Python
-- Streamlit
-- YouTube Data API
-- Gemini API
-- Plotly
-- Pandas
+### Single Video Analysis
+
+* Analyze YouTube videos using real-time performance metrics
+* Calculate engagement rate and performance score
+* Generate AI-powered content insights
+* Understand audience fit and improvement opportunities
+
+### Channel Intelligence
+
+* Analyze creator channels using recent upload performance
+* Track subscriber, view, and content trends
+* Visualize channel-level performance patterns
+
+### Creator Scorecard
+
+* Measure creator health across multiple dimensions
+* Consistency Score
+* Engagement Score
+* Momentum Score
+* Audience Pull Score
+* Packaging & Optimization Score
+* Content Depth Score
+
+### Video Comparison
+
+* Compare multiple videos side-by-side
+* Benchmark performance scores
+* Compare engagement quality and interaction density
+* Identify winning content patterns
+
+### Growth Strategy Generator
+
+* AI-powered channel positioning
+* Content pillar recommendations
+* Growth opportunities
+* Upload strategy recommendations
+* Next-video ideation
+
+### Channel DNA Analysis
+
+* Discover channel identity and content patterns
+* Identify winning formats
+* Understand audience behavior
+* Surface growth opportunities
+
+### PDF Reports
+
+* Export professional analysis reports
+* Single Video Reports
+* Channel Intelligence Reports
+* Growth Strategy Reports
+* Channel DNA Reports
 
 ---
 
-## 🔗 Live Demo
+## Tech Stack
 
-[Open App](https://stratify-ai-qzjf3qnbf3pfjh3sgcdaxa.streamlit.app)
-
----
-
-## 💡 Use Case
-
-Stratify AI helps creators, marketers, and analysts:
-
-- Identify high-performing content patterns
-- Understand audience engagement behavior
-- Make data-driven content decisions
+* Python
+* Streamlit
+* YouTube Data API v3
+* NVIDIA LLM API
+* Plotly
+* Pandas
+* ReportLab
 
 ---
 
-## 📸 Preview
+## Live Demo
 
-<img width="2543" height="1298" alt="image" src="https://github.com/user-attachments/assets/75d7239f-887c-430d-8541-ce4d62a25314" />
-<img width="2557" height="1297" alt="image" src="https://github.com/user-attachments/assets/225379e9-b049-485d-9e72-93f781b120e4" />
-<img width="2547" height="1295" alt="image" src="https://github.com/user-attachments/assets/e1f9e559-fa37-4a0e-ab79-040f95272767" />
+https://stratify-ai-qzjf3qnbf3pfjh3sgcdaxa.streamlit.app
 
 ---
 
-## 📄 Copyright and Usage
+## Use Cases
 
-© 2026 Rahul Karaka. All Rights Reserved.
+Stratify helps:
 
-This project is the intellectual property of Rahul Karaka.  
-This repository is shared for portfolio and demonstration purposes only.  
-No permission is granted to copy, modify, distribute, sublicense, sell, or commercially use this code without prior written permission.
+* YouTube Creators
+* Content Strategists
+* Marketing Teams
+* Social Media Analysts
+* Creator Economy Professionals
+
+Understand what works, why it works, and what to create next.
+
+---
+
+## Brand Philosophy
+
+Data → Insights → Strategy
+
+Stratify organizes creator performance signals into meaningful layers, helping creators move beyond analytics and toward actionable growth decisions.
