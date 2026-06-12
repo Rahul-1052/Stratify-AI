@@ -1417,37 +1417,35 @@ def make_pdf_report(title, sections, metrics=None):
 
     story = []
 
-    # Clean PDF header: icon + report title only.
-    # Website header is untouched.
+    # PDF header: use the clean icon plus the report title.
+    # Website header is untouched. Horizontal logo is intentionally not used here
+    # because it becomes too small inside the PDF banner.
     logo_flowable = ""
     try:
         if APP_ICON_PATH:
-            logo_flowable = RLImage(
-                str(APP_ICON_PATH),
-                width=0.58 * inch,
-                height=0.58 * inch
-            )
+            logo_flowable = RLImage(str(APP_ICON_PATH), width=0.58 * inch, height=0.58 * inch)
     except Exception:
         logo_flowable = ""
 
     brand_copy = [
         Paragraph(pdf_clean(title), brand_style),
+        Paragraph("See What Works. Create What Wins.", tagline_style),
     ]
 
     if logo_flowable:
         header = Table(
             [[logo_flowable, brand_copy]],
-            colWidths=[0.90 * inch, page_width - 0.90 * inch],
-            rowHeights=[0.78 * inch]
+            colWidths=[0.88 * inch, page_width - 0.88 * inch],
+            rowHeights=[0.74 * inch]
         )
     else:
-        header = Table([[brand_copy]], colWidths=[page_width], rowHeights=[0.78 * inch])
+        header = Table([[brand_copy]], colWidths=[page_width], rowHeights=[0.74 * inch])
 
     header.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
         ("LINEBELOW", (0, 0), (-1, -1), 3, colors.HexColor("#22c55e")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("ALIGN", (0, 0), (0, 0), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 16),
         ("RIGHTPADDING", (0, 0), (-1, -1), 16),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
