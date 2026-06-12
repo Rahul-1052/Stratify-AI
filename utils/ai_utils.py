@@ -21,7 +21,6 @@ REQUIRED_KEYS = {
     "next_video_ideas": []
 }
 
-
 LIST_KEYS = [
     "actionable_recommendations",
     "why_this_video_works",
@@ -30,6 +29,25 @@ LIST_KEYS = [
     "better_titles",
     "thumbnail_concepts",
     "next_video_ideas"
+]
+
+CHANNEL_DNA_KEYS = {
+    "primary_content_style": "N/A",
+    "audience_profile": "N/A",
+    "winning_content_patterns": [],
+    "underperforming_patterns": [],
+    "growth_opportunities": [],
+    "recommended_content_pillars": [],
+    "upload_strategy": "N/A",
+    "30_day_channel_plan": []
+}
+
+CHANNEL_DNA_LIST_KEYS = [
+    "winning_content_patterns",
+    "underperforming_patterns",
+    "growth_opportunities",
+    "recommended_content_pillars",
+    "30_day_channel_plan"
 ]
 
 
@@ -48,6 +66,27 @@ def normalize_insights(data: dict | None) -> dict:
         normalized[key] = value
 
     for key in LIST_KEYS:
+        if not isinstance(normalized[key], list):
+            normalized[key] = [str(normalized[key])] if normalized[key] else []
+
+    return normalized
+
+
+def normalize_channel_dna(data: dict | None) -> dict:
+    if not isinstance(data, dict):
+        data = {}
+
+    normalized = {}
+
+    for key, default_value in CHANNEL_DNA_KEYS.items():
+        value = data.get(key, default_value)
+
+        if value is None or value == "":
+            value = default_value
+
+        normalized[key] = value
+
+    for key in CHANNEL_DNA_LIST_KEYS:
         if not isinstance(normalized[key], list):
             normalized[key] = [str(normalized[key])] if normalized[key] else []
 
@@ -131,6 +170,42 @@ def fallback_insights(payload: dict) -> dict:
     })
 
 
+def fallback_channel_dna(payload: dict) -> dict:
+    summary = payload.get("channel_summary", {})
+
+    return normalize_channel_dna({
+        "primary_content_style": "Metadata-driven creator content with identifiable performance patterns.",
+        "audience_profile": "The audience is likely built around viewers who already respond to the channel's recurring topics, titles, and content themes.",
+        "winning_content_patterns": [
+            "Repeat the topics and title angles found in the highest-viewed videos.",
+            "Study videos with above-average engagement for audience loyalty signals.",
+            "Use high-performing videos as templates for future formats."
+        ],
+        "underperforming_patterns": [
+            "Videos with low views may have weaker packaging or less clear topic demand.",
+            "Low-engagement uploads may not give viewers a strong reason to comment or react.",
+            "Inconsistent topic framing may make it harder for new viewers to understand the channel."
+        ],
+        "growth_opportunities": [
+            "Turn best-performing topics into repeatable series.",
+            "Improve titles and thumbnails around clear emotional payoff.",
+            "Create follow-up videos based on top-performing recent uploads."
+        ],
+        "recommended_content_pillars": [
+            "Repeatable winner formats",
+            "Audience reaction or discussion content",
+            "Short-form clips from strongest topics"
+        ],
+        "upload_strategy": f"Use the {summary.get('videos_analyzed', 'recent')} analyzed videos to identify the top 2-3 repeatable formats and post around those consistently.",
+        "30_day_channel_plan": [
+            "Week 1: Identify top videos and extract common title/topic patterns.",
+            "Week 2: Publish follow-ups based on the strongest performers.",
+            "Week 3: Test improved packaging on similar topics.",
+            "Week 4: Double down on the best-performing format and plan a repeatable series."
+        ]
+    })
+
+
 def safe_parse_ai_json(text: str) -> dict | None:
     if not text:
         return None
@@ -144,6 +219,7 @@ def safe_parse_ai_json(text: str) -> dict | None:
         pass
 
     match = re.search(r"\{.*\}", text, re.DOTALL)
+
     if match:
         try:
             return json.loads(match.group(0))
@@ -156,12 +232,14 @@ def safe_parse_ai_json(text: str) -> dict | None:
 def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> dict:
     nvidia_api_key = nvidia_api_key or st.secrets.get("NVIDIA_API_KEY", "") or os.getenv("NVIDIA_API_KEY")
 
+    is_channel_dna = payload.get("task") == "channel_dna_analysis"
+
     if not nvidia_api_key:
         return {
             "ok": False,
             "mode": "fallback",
-            "error": "Missing NVIDIA_API_KEY.",
-            "data": fallback_insights(payload)
+            "error": "Strategy engine unavailable.",
+            "data": fallback_channel_dna(payload) if is_channel_dna else fallback_insights(payload)
         }
 
     try:
@@ -170,7 +248,64 @@ def generate_ai_insights(payload: dict, nvidia_api_key: str | None = None) -> di
             api_key=nvidia_api_key
         )
 
-        prompt = f"""
+        if is_channel_dna:
+            prompt = f"""
+You are Stratify AI, a senior YouTube growth strategist.
+
+Analyze this YouTube channel using only the provided metadata and performance data.
+
+Return ONLY valid JSON.
+Do not use markdown.
+Do not include explanations outside JSON.
+
+You MUST return this exact JSON structure:
+
+{{
+  "primary_content_style": "one specific phrase describing the channel's main content style",
+  "audience_profile": "one clear paragraph describing the likely audience",
+  "winning_content_patterns": [
+    "specific winning pattern 1",
+    "specific winning pattern 2",
+    "specific winning pattern 3"
+  ],
+  "underperforming_patterns": [
+    "specific weak pattern 1",
+    "specific weak pattern 2",
+    "specific weak pattern 3"
+  ],
+  "growth_opportunities": [
+    "specific growth opportunity 1",
+    "specific growth opportunity 2",
+    "specific growth opportunity 3"
+  ],
+  "recommended_content_pillars": [
+    "content pillar 1",
+    "content pillar 2",
+    "content pillar 3"
+  ],
+  "upload_strategy": "specific upload strategy based on recent channel performance",
+  "30_day_channel_plan": [
+    "week 1 plan",
+    "week 2 plan",
+    "week 3 plan",
+    "week 4 plan"
+  ]
+}}
+
+Rules:
+- Do not omit any key.
+- Do not rename keys.
+- Do not return null values.
+- Make every answer specific to the channel data.
+- Do not mention transcripts.
+- Avoid generic advice.
+- Use titles, views, likes, comments, engagement rate, top videos, weak videos, and recent uploads.
+
+Channel Data:
+{json.dumps(payload.get("channel_summary", {}), indent=2)}
+"""
+        else:
+            prompt = f"""
 You are Stratify AI, a senior YouTube strategist and creator growth analyst.
 
 Your job is not just to describe the video.
@@ -269,7 +404,7 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
                 }
             ],
             temperature=0.35,
-            max_tokens=1600
+            max_tokens=1800
         )
 
         text = response.choices[0].message.content
@@ -278,22 +413,22 @@ Transcript Excerpt: {payload.get("transcript_excerpt")}
         if parsed:
             return {
                 "ok": True,
-                "mode": "nvidia",
+                "mode": "strategy",
                 "error": None,
-                "data": normalize_insights(parsed)
+                "data": normalize_channel_dna(parsed) if is_channel_dna else normalize_insights(parsed)
             }
 
         return {
             "ok": False,
             "mode": "fallback",
-            "error": "NVIDIA returned non-JSON output.",
-            "data": fallback_insights(payload)
+            "error": "Strategy engine returned non-JSON output.",
+            "data": fallback_channel_dna(payload) if is_channel_dna else fallback_insights(payload)
         }
 
     except Exception as e:
         return {
             "ok": False,
             "mode": "fallback",
-            "error": f"NVIDIA failed: {str(e)}",
-            "data": fallback_insights(payload)
+            "error": f"Strategy engine failed: {str(e)}",
+            "data": fallback_channel_dna(payload) if is_channel_dna else fallback_insights(payload)
         }
