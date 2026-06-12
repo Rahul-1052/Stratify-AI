@@ -2330,7 +2330,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#94a3b8; font-size:13px; padding:14px 0 4px 0;">
-        Built by Rahul Karaka
+        Built by Rahul Karaka • Generated with Stratify - {datetime.now().strftime('%B %d, %Y')}
     </div>
     """,
     unsafe_allow_html=True
