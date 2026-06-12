@@ -52,9 +52,18 @@ APP_HORIZONTAL_LOGO_PATH = find_asset(
     "stratify_horizontal.png"
 )
 
+# Browser tab icon / favicon.
+# Using bytes is more reliable on Streamlit Cloud than passing a file path string.
+APP_PAGE_ICON = "📊"
+if APP_ICON_PATH:
+    try:
+        APP_PAGE_ICON = APP_ICON_PATH.read_bytes()
+    except Exception:
+        APP_PAGE_ICON = "📊"
+
 st.set_page_config(
     page_title="Stratify",
-    page_icon=str(APP_ICON_PATH) if APP_ICON_PATH else "📊",
+    page_icon=APP_PAGE_ICON,
     layout="wide"
 )
 
@@ -63,7 +72,6 @@ NVIDIA_API_KEY = st.secrets.get("NVIDIA_API_KEY", "")
 
 YOUTUBE_BASE_URL = "https://www.googleapis.com/youtube/v3"
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-
 
 # =========================================================
 # GLOBAL CSS
