@@ -338,6 +338,43 @@ def calculate_video_score(views, likes, comments):
     return round(min(score, 100), 1)
 
 
+def calculate_viral_score(views, likes, comments):
+    """
+    Estimate viral potential using interaction density.
+    This is separate from performance score because a video can have high reach
+    but low share/comment energy, or lower reach with strong viral signals.
+    """
+    views = safe_float(views)
+    likes = safe_float(likes)
+    comments = safe_float(comments)
+
+    if views <= 0:
+        return 0
+
+    like_density = (likes / views) * 1000
+    comment_density = (comments / views) * 1000
+    engagement_rate = ((likes + comments) / views) * 100
+
+    score = (
+        min(like_density * 2.2, 40) +
+        min(comment_density * 8.0, 35) +
+        min(engagement_rate * 8.5, 25)
+    )
+
+    return round(min(score, 100), 1)
+
+
+def classify_viral_score(score):
+    score = safe_float(score)
+    if score >= 80:
+        return "High Viral Potential"
+    if score >= 65:
+        return "Strong Shareability"
+    if score >= 45:
+        return "Moderate Viral Potential"
+    return "Low Viral Potential"
+
+
 def classify_performance(score):
     if score >= 80:
         return "Excellent"
@@ -346,6 +383,47 @@ def classify_performance(score):
     if score >= 45:
         return "Moderate"
     return "Needs Improvement"
+
+
+def prepare_video_dataframe(videos):
+    """Create a clean video dataframe and guarantee one valid viral_score column.
+
+    This prevents Streamlit/Pandas crashes caused by duplicate cached columns
+    while keeping Viral Score available across every tab.
+    """
+    df = pd.DataFrame(videos or [])
+
+    if df.empty:
+        return df
+
+    # Remove duplicate columns safely. This fixes the duplicate viral_score error.
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+
+    required_numeric = ["views", "likes", "comments", "engagement_rate", "performance_score", "viral_score"]
+    for col in required_numeric:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    if "viral_score" not in df.columns:
+        df["viral_score"] = df.apply(
+            lambda row: calculate_viral_score(
+                row.get("views", 0),
+                row.get("likes", 0),
+                row.get("comments", 0)
+            ),
+            axis=1
+        )
+    else:
+        df["viral_score"] = df.apply(
+            lambda row: calculate_viral_score(
+                row.get("views", 0),
+                row.get("likes", 0),
+                row.get("comments", 0)
+            ),
+            axis=1
+        )
+
+    return df
 
 
 def score_tone(score):
@@ -412,7 +490,7 @@ def get_channel_signal_summary(videos):
             "uploads_per_week": 0
         }
 
-    df = pd.DataFrame(videos)
+    df = prepare_video_dataframe(videos)
     avg_views = safe_float(df["views"].mean()) if "views" in df else 0
     avg_engagement = safe_float(df["engagement_rate"].mean()) if "engagement_rate" in df else 0
     avg_score = safe_float(df["performance_score"].mean()) if "performance_score" in df else 0
@@ -436,6 +514,8 @@ def get_channel_signal_summary(videos):
 
 def build_video_executive_summary(video):
     score = safe_float(video.get("performance_score", 0))
+    viral_score = safe_float(video.get("viral_score", 0))
+    viral_label = classify_viral_score(viral_score)
     engagement = safe_float(video.get("engagement_rate", 0))
     views = safe_int(video.get("views", 0))
     title = normalize_text(video.get("title"), "this video")
@@ -457,6 +537,7 @@ def build_video_executive_summary(video):
     return [
         f"Video reviewed: {title} from {channel}.",
         f"Performance read: {score}/100 ({score_tone(score)}) with {format_number(views)} views and {engagement}% engagement.",
+        f"Viral potential: {viral_score}/100 ({viral_label}).",
         f"Key finding: {finding}",
         f"Primary recommendation: {recommendation}"
     ]
@@ -547,6 +628,8 @@ def build_smart_video_fallback(video, transcript):
     comments = safe_int(video.get("comments", 0))
     engagement = safe_float(video.get("engagement_rate", 0))
     score = safe_float(video.get("performance_score", 0))
+    viral_score = safe_float(video.get("viral_score", 0))
+    viral_label = classify_viral_score(viral_score)
 
     transcript_signal = "The transcript was available, so the analysis can consider both metadata and spoken content." if transcript else "Transcript was unavailable, so this read is based on title, description, and performance signals."
 
@@ -562,7 +645,7 @@ def build_smart_video_fallback(video, transcript):
     return {
         "content_style": f"{title} is positioned as a focused YouTube video from {channel}, built around a clear topic that viewers can understand quickly. {transcript_signal} The format should be judged by how quickly it communicates the payoff and whether the first moments match the promise made by the title.",
         "target_audience": f"The likely audience includes viewers already interested in the subject, fans of {channel}, and casual users who click because the title suggests a familiar or high-interest moment. The video is most likely to work when the thumbnail and opening make the payoff obvious before the viewer has to think too much.",
-        "why_it_performs": f"{performance_read} The video has {format_number(views)} views, {format_number(likes)} likes, {format_number(comments)} comments, and a {engagement}% engagement rate, giving it a performance score of {score}/100.",
+        "why_it_performs": f"{performance_read} The video has {format_number(views)} views, {format_number(likes)} likes, {format_number(comments)} comments, and a {engagement}% engagement rate, giving it a performance score of {score}/100 and viral score of {viral_score}/100 ({viral_label}).",
         "improvement_suggestion": "Improve the first 15 seconds by clearly stating or showing the payoff immediately. Make the title more specific, strengthen the thumbnail contrast, and add a natural comment trigger near the most emotional, surprising, or useful moment."
     }
 
@@ -703,6 +786,7 @@ def get_video_details(video_id):
         "comments": comments,
         "engagement_rate": calculate_engagement_rate(likes, comments, views),
         "performance_score": calculate_video_score(views, likes, comments),
+        "viral_score": calculate_viral_score(views, likes, comments),
     }
 
 
@@ -845,6 +929,7 @@ def get_recent_channel_videos(channel_id, max_results=20):
             "comments": comments,
             "engagement_rate": calculate_engagement_rate(likes, comments, views),
             "performance_score": calculate_video_score(views, likes, comments),
+            "viral_score": calculate_viral_score(views, likes, comments),
             "thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url")
         })
 
@@ -911,7 +996,7 @@ def calculate_creator_scorecard(channel, videos):
             "verdict": "Not enough recent video data available."
         }
 
-    df = pd.DataFrame(videos)
+    df = prepare_video_dataframe(videos)
 
     avg_views = df["views"].mean()
     avg_engagement = df["engagement_rate"].mean()
@@ -1119,6 +1204,7 @@ def get_video_ai_insights(video, transcript):
     Likes: {video["likes"]}
     Comments: {video["comments"]}
     Engagement Rate: {video["engagement_rate"]}%
+    Viral Score: {video.get("viral_score", 0)}/100 ({classify_viral_score(video.get("viral_score", 0))})
     Transcript context: {transcript[:4500] if transcript else "Transcript unavailable. Use metadata and performance signals."}
 
     Return ONLY valid JSON with these exact keys:
@@ -1570,7 +1656,7 @@ def make_pdf_report(title, sections, metrics=None):
 
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        f"Generated by Stratify AI | Built by Rahul Karaka - {datetime.now().strftime('%B %d, %Y')}",
+        f"Built by Rahul Karaka • Generated with Stratify - {datetime.now().strftime('%B %d, %Y')}",
         footer_style
     ))
 
@@ -1589,6 +1675,7 @@ def build_video_report(video, insights):
         "Comments": format_number(video.get("comments", 0)),
         "Engagement Rate": f"{video.get('engagement_rate', 0)}%",
         "Performance Score": f"{video.get('performance_score', 0)}/100",
+        "Viral Score": f"{video.get('viral_score', 0)}/100",
     }
 
     sections = [
@@ -1620,7 +1707,7 @@ def build_channel_report(channel, scorecard, videos):
 
     top_videos = []
     if videos:
-        df = pd.DataFrame(videos)
+        df = prepare_video_dataframe(videos)
         top = df.sort_values("performance_score", ascending=False).head(10)
         for _, row in top.iterrows():
             top_videos.append(
@@ -1748,7 +1835,7 @@ with tabs[0]:
             st.caption(f"Channel: {video['channel_title']}")
             st.caption(f"Published: {video['published_at']}")
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             render_metric_card("Views", format_number(video["views"]))
         with c2:
@@ -1757,6 +1844,8 @@ with tabs[0]:
             render_metric_card("Comments", format_number(video["comments"]))
         with c4:
             render_metric_card("Performance Score", f"{video['performance_score']}/100")
+        with c5:
+            render_metric_card("Viral Score", f"{video.get('viral_score', 0)}/100")
 
         st.subheader("Engagement Summary")
         engagement_df = pd.DataFrame({
@@ -1777,6 +1866,11 @@ with tabs[0]:
 
         with st.spinner("Generating insights..."):
             insights = get_video_ai_insights(video, transcript)
+
+        render_ai_insight(
+            "Viral Potential",
+            f"{classify_viral_score(video.get('viral_score', 0))}. Stratify estimates this from like density, comment density, and engagement rate so it captures shareability signals separately from raw views."
+        )
 
         st.subheader("AI Insights")
         render_ai_insight("Content Style", insights.get("content_style", "Not available"))
@@ -1845,14 +1939,14 @@ with tabs[1]:
         with c3:
             render_metric_card("Videos", format_number(channel["video_count"]))
         with c4:
-            avg_views = pd.DataFrame(videos)["views"].mean() if videos else 0
+            avg_views = prepare_video_dataframe(videos)["views"].mean() if videos else 0
             render_metric_card("Avg Recent Views", format_number(avg_views))
 
         scorecard = calculate_creator_scorecard(channel, videos)
         render_creator_scorecard(scorecard)
 
         if videos:
-            df = pd.DataFrame(videos)
+            df = prepare_video_dataframe(videos)
 
             st.subheader("Recent Video Performance")
 
@@ -1889,6 +1983,7 @@ with tabs[1]:
                     "comments",
                     "engagement_rate",
                     "performance_score",
+                    "viral_score",
                     "published_at"
                 ]],
                 width="stretch"
@@ -1944,17 +2039,19 @@ with tabs[2]:
             st.error("Could not find at least 2 valid videos.")
             st.stop()
 
-        df = pd.DataFrame(videos)
+        df = prepare_video_dataframe(videos)
         df["Likes per 1K Views"] = (df["likes"] / df["views"].replace(0, 1) * 1000).round(2)
         df["Comments per 1K Views"] = (df["comments"] / df["views"].replace(0, 1) * 1000).round(2)
         df["Performance Label"] = df["performance_score"].apply(classify_performance)
+        df["Viral Label"] = df["viral_score"].apply(classify_viral_score)
 
         winner = df.sort_values("performance_score", ascending=False).iloc[0]
         most_viewed = df.sort_values("views", ascending=False).iloc[0]
         best_engagement = df.sort_values("engagement_rate", ascending=False).iloc[0]
+        best_viral = df.sort_values("viral_score", ascending=False).iloc[0]
 
         st.subheader("Comparison Verdict")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             render_metric_card("Best Overall", f"{winner['performance_score']}/100")
             st.caption(winner["title"])
@@ -1964,6 +2061,9 @@ with tabs[2]:
         with c3:
             render_metric_card("Best Engagement", f"{best_engagement['engagement_rate']}%")
             st.caption(best_engagement["title"])
+        with c4:
+            render_metric_card("Best Viral Score", f"{best_viral['viral_score']}/100")
+            st.caption(best_viral["title"])
 
         render_ai_insight(
             "Strategic Read",
@@ -1982,7 +2082,9 @@ with tabs[2]:
                 "Likes per 1K Views",
                 "Comments per 1K Views",
                 "performance_score",
-                "Performance Label"
+                "viral_score",
+                "Performance Label",
+                "Viral Label"
             ]],
             width="stretch"
         )
@@ -2035,6 +2137,7 @@ with tabs[2]:
             "Like Density": (df["Likes per 1K Views"] / max(df["Likes per 1K Views"].max(), 1) * 100).round(1),
             "Comment Density": (df["Comments per 1K Views"] / max(df["Comments per 1K Views"].max(), 1) * 100).round(1),
             "Engagement": (df["engagement_rate"] / max(df["engagement_rate"].max(), 1) * 100).round(1),
+            "Viral": df["viral_score"],
             "Overall": df["performance_score"]
         })
 
@@ -2078,11 +2181,11 @@ with tabs[3]:
         with g3:
             render_metric_card("Total Videos", format_number(channel["video_count"]))
         with g4:
-            avg_score = round(pd.DataFrame(videos)["performance_score"].mean(), 1) if videos else 0
+            avg_score = round(prepare_video_dataframe(videos)["performance_score"].mean(), 1) if videos else 0
             render_metric_card("Recent Avg Score", f"{avg_score}/100")
 
         if videos:
-            df = pd.DataFrame(videos)
+            df = prepare_video_dataframe(videos)
             top_df = df.sort_values("performance_score", ascending=False).head(5)
             fig = px.bar(
                 top_df,
@@ -2120,8 +2223,8 @@ with tabs[3]:
         if videos:
             st.subheader("Recent Upload Signals")
             st.dataframe(
-                pd.DataFrame(videos)[[
-                    "title", "views", "likes", "comments", "engagement_rate", "performance_score", "published_at"
+                prepare_video_dataframe(videos)[[
+                    "title", "views", "likes", "comments", "engagement_rate", "performance_score", "viral_score", "published_at"
                 ]],
                 width="stretch"
             )
@@ -2171,11 +2274,11 @@ with tabs[4]:
         with d3:
             render_metric_card("Videos Analyzed", len(videos))
         with d4:
-            avg_eng = round(pd.DataFrame(videos)["engagement_rate"].mean(), 2) if videos else 0
+            avg_eng = round(prepare_video_dataframe(videos)["engagement_rate"].mean(), 2) if videos else 0
             render_metric_card("Avg Engagement", f"{avg_eng}%")
 
         if videos:
-            df = pd.DataFrame(videos)
+            df = prepare_video_dataframe(videos)
             fig = px.scatter(
                 df,
                 x="views",
@@ -2205,7 +2308,7 @@ with tabs[4]:
 
         if videos:
             st.subheader("Content DNA Evidence")
-            evidence_df = pd.DataFrame(videos)[[
+            evidence_df = prepare_video_dataframe(videos)[[
                 "title", "views", "likes", "comments", "engagement_rate", "performance_score"
             ]].sort_values("performance_score", ascending=False)
             st.dataframe(evidence_df, width="stretch")
@@ -2227,7 +2330,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#94a3b8; font-size:13px; padding:14px 0 4px 0;">
-        Stratify AI v1.0 &nbsp;•&nbsp; Built by Rahul Karaka
+        Built by Rahul Karaka
     </div>
     """,
     unsafe_allow_html=True
