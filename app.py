@@ -2330,7 +2330,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#94a3b8; font-size:13px; padding:14px 0 4px 0;">
-        Built by Rahul Karaka • Generated with Stratify
+        Built by Rahul Karaka • Powered by Stratify
     </div>
     """,
     unsafe_allow_html=True
