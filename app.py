@@ -1156,6 +1156,63 @@ def render_creator_scorecard(scorecard):
 
 
 
+def analyze_top_video_patterns(videos):
+    if not videos:
+        return None
+
+    df = prepare_video_dataframe(videos)
+    if df.empty or "performance_score" not in df.columns:
+        return None
+
+    top_videos = df.sort_values("performance_score", ascending=False).head(10)
+
+    avg_title_length = round(top_videos["title"].fillna("").apply(len).mean(), 1)
+    avg_engagement = round(top_videos["engagement_rate"].mean(), 2)
+    avg_viral_score = round(top_videos["viral_score"].mean(), 1)
+
+    keywords = extract_title_keywords(top_videos.to_dict("records"), limit=6)
+
+    return {
+        "top_videos_count": len(top_videos),
+        "avg_title_length": avg_title_length,
+        "avg_engagement": avg_engagement,
+        "avg_viral_score": avg_viral_score,
+        "keywords": keywords
+    }
+
+
+def render_top_video_patterns(videos):
+    patterns = analyze_top_video_patterns(videos)
+    if not patterns:
+        return
+
+    st.subheader("Winning Content Patterns")
+    st.caption("Stratify studies the strongest recent videos to show what this channel should repeat.")
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        render_metric_card("Top Videos Studied", patterns["top_videos_count"])
+    with c2:
+        render_metric_card("Avg Title Length", f"{patterns['avg_title_length']} chars")
+    with c3:
+        render_metric_card("Avg Engagement", f"{patterns['avg_engagement']}%")
+    with c4:
+        render_metric_card("Avg Viral Score", f"{patterns['avg_viral_score']}/100")
+
+    st.markdown("### Top Repeating Keywords")
+    if patterns["keywords"]:
+        for keyword in patterns["keywords"]:
+            st.markdown(
+                f"""
+                <div class="dna-list-item">
+                    {escape(keyword)}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+    else:
+        st.info("Not enough keyword patterns detected yet.")
 
 def style_chart(fig, x_title=None, y_title=None, height=None):
     fig.update_layout(
@@ -1944,6 +2001,7 @@ with tabs[1]:
 
         scorecard = calculate_creator_scorecard(channel, videos)
         render_creator_scorecard(scorecard)
+        render_top_video_patterns(videos)
 
         if videos:
             df = prepare_video_dataframe(videos)
@@ -2330,7 +2388,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#94a3b8; font-size:13px; padding:14px 0 4px 0;">
-        Built by Rahul Karaka • Powered by Stratify
+        Built by Rahul Karaka
     </div>
     """,
     unsafe_allow_html=True
